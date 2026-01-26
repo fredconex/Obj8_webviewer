@@ -535,6 +535,8 @@
                     <option value="material">Material</option>
                     <option value="solid">Solid</option>
                     <option value="albedo">Albedo (Unlit)</option>
+                    <option value="lit_only">Lit Only (Emissive)</option>
+                    <option value="normals">Normals</option>
                     <option value="wireframe">Wireframe</option>
                 </select>
             </div>
@@ -550,6 +552,12 @@
             <div class="stat-row"><span>Headlight</span><input type="range" id="light-head" min="0" max="2" step="0.1">
             </div>
             <div class="stat-row"><span>Ambience</span><input type="range" id="light-amb" min="0" max="2" step="0.1">
+            </div>
+
+            <h2>Material Defaults</h2>
+            <div class="stat-row"><span>Roughness</span><input type="range" id="mat-rough" min="0" max="1" step="0.05">
+            </div>
+            <div class="stat-row"><span>Metalness</span><input type="range" id="mat-metal" min="0" max="1" step="0.05">
             </div>
         </div>
 
@@ -614,7 +622,8 @@
 
         // Settings (Defaults)
         const settings = {
-            head: 0.8, sun: 1.5, fill: 0.6, back: 0.5, amb: 0.6
+            head: 0.8, sun: 1.5, fill: 0.6, back: 0.5, amb: 0.6,
+            rough: 0.5, metal: 0.2
         };
 
         // Lights
@@ -736,6 +745,8 @@
             setVal('light-fill', settings.fill);
             setVal('light-back', settings.back);
             setVal('light-amb', settings.amb);
+            setVal('mat-rough', settings.rough);
+            setVal('mat-metal', settings.metal);
 
             const bind = (id, fn) => document.getElementById(id).addEventListener('input', (e) => { fn(e); saveSettings(); });
 
@@ -744,6 +755,8 @@
             bind('light-fill', e => { settings.fill = parseFloat(e.target.value); fillLight.intensity = settings.fill; });
             bind('light-back', e => { settings.back = parseFloat(e.target.value); backLight.intensity = settings.back; });
             bind('light-amb', e => { settings.amb = parseFloat(e.target.value); hemiLight.intensity = settings.amb; });
+            bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); refreshMaterials(); });
+            bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
 
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
@@ -864,7 +877,8 @@
                 return new Promise((resolve) => {
                     const url = URL.createObjectURL(f);
                     texLoader.load(url, (tex) => {
-                        tex.colorSpace = THREE.SRGBColorSpace;
+                        const isNormalMap = f.name.toLowerCase().includes('_nrm');
+                        tex.colorSpace = isNormalMap ? THREE.NoColorSpace : THREE.SRGBColorSpace;
                         tex.name = f.name.toLowerCase();
                         // X-Plane OBJ8 uses standard UVs where 0,0 is bottom-left
                         // Three.js flipY=true (default) means 0 is bottom
@@ -908,12 +922,14 @@
 
             let currentTexture = "default";
             let litTexture = null;
+            let normalTexture = null;
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
                 const parts = l.split(/\s+/);
                 if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; }
                 if (parts[0] === 'TEXTURE_LIT') { litTexture = parts[1]; }
+                if (parts[0] === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
             }
 
             const groupStack = [{ object: fileGroup }];
@@ -939,7 +955,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture);
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -1037,7 +1053,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -1058,10 +1074,11 @@
                 geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
                 geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
 
-                const mat = getMaterial(texName, litName);
+                const mat = getMaterial(texName, litName, normName);
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh._textureName = texName;
                 mesh._litName = litName;
+                mesh._normalName = normName;
                 // Shadows removed
                 currentGroup().add(mesh);
             }
@@ -1248,63 +1265,60 @@
             return wrapper;
         }
 
-        function getMaterial(textureName, litName) {
+        function getMaterial(textureName, litName, normalName) {
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
-            const cacheKey = `${baseName}|${litBase}|${currentViewMode}`;
+            const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
+            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${settings.rough}|${settings.metal}`;
 
             if (!materialCache.has(cacheKey)) {
                 let mat;
                 if (currentViewMode === 'albedo') {
-                    mat = new THREE.MeshBasicMaterial({
-                        name: baseName,
-                        color: 0xffffff, side: THREE.DoubleSide
-                    });
+                    mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                } else if (currentViewMode === 'lit_only') {
+                    mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                } else if (currentViewMode === 'normals') {
+                    mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
                 } else {
                     mat = new THREE.MeshStandardMaterial({
                         name: baseName,
                         color: 0xbbbbbb, side: THREE.DoubleSide,
-                        roughness: 0.5, metalness: 0.2
+                        roughness: settings.rough, metalness: settings.metal
                     });
-                    if (currentViewMode === 'wireframe') {
-                        mat.wireframe = true;
-                    }
+                    if (currentViewMode === 'wireframe') mat.wireframe = true;
                 }
 
-                if (currentViewMode !== 'solid' && currentViewMode !== 'wireframe') {
-                    const findTex = (name) => {
-                        if (!name || name === "default") return null;
-                        const low = name.toLowerCase();
-                        const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp"];
-                        for (const c of candidates) {
-                            if (loadedTextures.has(c)) return loadedTextures.get(c);
-                        }
-                        // Try stripping extension if it has one
-                        const noExt = low.replace(/\.[^/.]+$/, "");
-                        if (noExt !== low) {
-                            const more = [noExt, noExt + ".png", noExt + ".jpg", noExt + ".jpeg", noExt + ".bmp"];
-                            for (const c of more) {
-                                if (loadedTextures.has(c)) return loadedTextures.get(c);
-                            }
-                        }
-                        return null;
-                    };
+                const findTex = (name) => {
+                    if (!name || name === "default") return null;
+                    const low = name.toLowerCase();
+                    const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp",
+                        low.replace(/\.[^/.]+$/, "") + ".png", low.replace(/\.[^/.]+$/, "") + ".jpg"];
+                    for (const c of candidates) { if (loadedTextures.has(c)) return loadedTextures.get(c); }
+                    return null;
+                };
 
-                    const mainTex = findTex(baseName);
-                    if (mainTex) {
-                        mat.map = mainTex;
-                        mat.color.set(0xffffff);
-                    }
+                // Apply Textures based on mode
+                if (currentViewMode === 'material') {
+                    const tex = findTex(baseName);
+                    if (tex) { mat.map = tex; mat.color.set(0xffffff); }
 
-                    if (litBase && currentViewMode === 'material') {
-                        const litTex = findTex(litBase);
-                        if (litTex) {
-                            mat.emissiveMap = litTex;
-                            mat.emissive.set(0xffffff);
-                            mat.emissiveIntensity = 1.0;
-                        }
+                    const ltex = findTex(litBase);
+                    if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1.0; }
+
+                    let ntex = findTex(normBase);
+                    if (!ntex && baseName) {
+                        // Auto-detect _NRM if no normal texture is specified
+                        const baseWithoutExt = baseName.replace(/\.[^/.]+$/, "");
+                        ntex = findTex(baseWithoutExt + "_NRM") || findTex(baseWithoutExt + "_nrm");
                     }
-                } else if (currentViewMode === 'wireframe' || currentViewMode === 'solid') {
+                    if (ntex) { mat.normalMap = ntex; mat.normalScale.set(1, 1); }
+                } else if (currentViewMode === 'albedo') {
+                    const tex = findTex(baseName);
+                    if (tex) mat.map = tex;
+                } else if (currentViewMode === 'lit_only') {
+                    const ltex = findTex(litBase);
+                    if (ltex) mat.map = ltex; else mat.color.set(0x000000);
+                } else if (currentViewMode === 'solid' || currentViewMode === 'wireframe') {
                     mat.color.set(0x888888);
                 }
 
@@ -1314,17 +1328,11 @@
         }
 
         function refreshMaterials() {
-            // Need to clear material cache or at least re-evaluate for the new mode
-            // For simplicity, we'll re-assign materials to all meshes
             rootGroup.traverse(obj => {
                 if (obj.isMesh) {
-                    // Check if it's currently selected, if so we need to handle its _oldMaterial
+                    const t = obj._textureName, l = obj._litName, n = obj._normalName;
                     if (selectedMesh === obj) {
-                        // Update the backup material
-                        const textureName = obj._textureName; // We need to store these
-                        const litName = obj._litName;
-                        obj._oldMaterial = getMaterial(textureName, litName);
-                        // Highlight material is separate, but we should probably refresh it too
+                        obj._oldMaterial = getMaterial(t, l, n);
                         const highlight = obj._oldMaterial.clone();
                         highlight.emissive.setHex(0x0077ff);
                         highlight.emissiveIntensity = 2.0;
@@ -1332,9 +1340,7 @@
                         obj.material.dispose();
                         obj.material = highlight;
                     } else {
-                        const textureName = obj._textureName;
-                        const litName = obj._litName;
-                        obj.material = getMaterial(textureName, litName);
+                        obj.material = getMaterial(t, l, n);
                     }
                 }
             });
