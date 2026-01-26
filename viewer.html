@@ -528,6 +528,52 @@
             color: #555;
             pointer-events: none;
         }
+
+        /* --- COLLAPSIBLE STATS --- */
+        .collapsible-container {
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: #1a1a1a;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            background: #252525;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: var(--accent);
+            user-select: none;
+        }
+
+        .collapsible-header:hover {
+            background: #2d2d2d;
+        }
+
+        .collapsible-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .collapsible-content.collapsed {
+            display: none;
+        }
+
+        #stats-toggle-icon {
+            transition: transform 0.2s;
+            font-size: 0.7rem;
+        }
+
+        .collapsed #stats-toggle-icon {
+            transform: rotate(-90deg);
+        }
     </style>
 
     <script type="importmap">
@@ -548,9 +594,19 @@
         <div id="sidebar" class="hidden-ui">
             <h1>OBJ8 Inspector <button class="btn btn-danger" id="close-btn" name="close-btn">Close</button></h1>
 
-            <div class="stat-row"><span>Files:</span> <span id="f-count" class="stat-val">0</span></div>
-            <div class="stat-row"><span>Vertices:</span> <span id="v-count" class="stat-val">0</span></div>
-            <div class="stat-row"><span>Meshes:</span> <span id="m-count" class="stat-val">0</span></div>
+            <div id="stats-container" class="collapsible-container">
+                <div class="collapsible-header" id="stats-header">
+                    <span>Statistics</span>
+                    <span id="stats-toggle-icon">▼</span>
+                </div>
+                <div id="stats-content" class="collapsible-content">
+                    <div class="stat-row"><span>Files:</span> <span id="f-count" class="stat-val">0</span></div>
+                    <div class="stat-row"><span>Vertices:</span> <span id="v-count" class="stat-val">0</span></div>
+                    <div class="stat-row"><span>Triangles:</span> <span id="m-count" class="stat-val">0</span></div>
+                    <div class="stat-row"><span>DataRefs:</span> <span id="d-count" class="stat-val">0</span></div>
+                    <div class="stat-row"><span>Animations:</span> <span id="a-count" class="stat-val">0</span></div>
+                </div>
+            </div>
 
             <h2>Objects</h2>
             <div id="obj-list-wrapper">
@@ -657,7 +713,6 @@
         let selectedMeshes = [];
 
         // Stats
-        let totalVertices = 0;
         let filesLoadedCount = 0;
 
         // Settings (Defaults)
@@ -773,7 +828,16 @@
             document.getElementById('cm-hide').addEventListener('click', hideSelectedMesh);
             document.getElementById('cm-unhide-all').addEventListener('click', unhideAllMeshes);
 
+            document.getElementById('stats-header').addEventListener('click', toggleStats);
+
             animate();
+        }
+
+        function toggleStats() {
+            const content = document.getElementById('stats-content');
+            const container = document.getElementById('stats-container');
+            content.classList.toggle('collapsed');
+            container.classList.toggle('collapsed');
         }
 
         function loadSettings() {
@@ -988,7 +1052,6 @@
             loadedTextures.clear();
 
             filesLoadedCount = 0;
-            totalVertices = 0;
 
             document.getElementById('obj-list-container').innerHTML = '';
             document.getElementById('dref-search').value = '';
@@ -1106,7 +1169,6 @@
                             nx: parseFloat(tokens[4]), ny: parseFloat(tokens[5]), nz: parseFloat(tokens[6]),
                             u: parseFloat(tokens[7]), v: parseFloat(tokens[8])
                         });
-                        totalVertices++;
                     }
                     else if (cmd.startsWith('IDX')) {
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
@@ -1308,11 +1370,13 @@
                 div.classList.add('selected-obj');
                 boxHelper = new THREE.BoxHelper(group, 0xffff00);
                 scene.add(boxHelper);
+                updateStats(group);
             };
             div.onmouseleave = () => {
                 div.classList.remove('selected-obj');
                 if (boxHelper) scene.remove(boxHelper);
                 boxHelper = null;
+                updateStats();
             };
 
             div.appendChild(nameSpan);
@@ -1526,10 +1590,59 @@
             skeletonHelpers.push(axes);
         }
 
-        function updateStats() {
-            document.getElementById('f-count').innerText = filesLoadedCount;
-            document.getElementById('v-count').innerText = totalVertices;
-            document.getElementById('m-count').innerText = renderer.info.render.triangles;
+        function updateStats(group = null) {
+            let fCount = filesLoadedCount;
+            let vCount = 0;
+            let tCount = 0;
+            let dRefs = new Set();
+            let aCount = 0;
+
+            if (group) {
+                // Stats for specific object/group
+                fCount = 1;
+                group.traverse(obj => {
+                    if (obj.isMesh) {
+                        vCount += obj.geometry.attributes.position.count;
+                        if (obj.geometry.index) {
+                            tCount += obj.geometry.index.count / 3;
+                        } else {
+                            tCount += obj.geometry.attributes.position.count / 3;
+                        }
+                    }
+                    // Count animations and datarefs specifically for this hierarchy
+                    for (let ctrl of animationControllers) {
+                        if (ctrl.target === obj) {
+                            aCount++;
+                            if (ctrl.dref) dRefs.add(ctrl.dref);
+                        }
+                    }
+                });
+            } else {
+                // Global stats
+                rootGroup.traverse(obj => {
+                    if (obj.isMesh) {
+                        vCount += obj.geometry.attributes.position.count;
+                        if (obj.geometry.index) {
+                            tCount += obj.geometry.index.count / 3;
+                        } else {
+                            tCount += obj.geometry.attributes.position.count / 3;
+                        }
+                    }
+                });
+                // Unique datarefs and total animations globally
+                animationControllers.forEach(ctrl => {
+                    aCount++;
+                    if (ctrl.dref) dRefs.add(ctrl.dref);
+                });
+            }
+
+            const format = (n) => Math.round(n).toLocaleString();
+
+            document.getElementById('f-count').innerText = format(fCount);
+            document.getElementById('v-count').innerText = format(vCount);
+            document.getElementById('m-count').innerText = format(tCount);
+            document.getElementById('d-count').innerText = format(dRefs.size);
+            document.getElementById('a-count').innerText = format(aCount);
         }
 
         function centerCamera() {
