@@ -1660,7 +1660,13 @@
                     let rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
                     let ntex = findTex(normBase);
                     if (!ntex) ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
-                    if (ntex) { mat.normalMap = ntex; mat.normalScale.set(1, 1); }
+                    if (ntex) {
+                        mat.normalMap = ntex;
+                        mat.normalScale.set(1, 1);
+                        // X-Plane normal maps use R and G channels for normal vector
+                        ntex.colorSpace = THREE.NoColorSpace;
+                        ntex.channel = 0; // R channel
+                    }
 
                     // 3. PBR Maps (MAT)
                     const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
