@@ -573,6 +573,8 @@
                 </select>
             </div>
             <button class="btn" id="recenter-btn" name="recenter-btn">Recenter Camera</button>
+            <label class="chk-label"><input type="checkbox" id="grid-chk" name="grid-chk" checked> Show World
+                Grid</label>
             <label class="chk-label"><input type="checkbox" id="skeleton-chk" name="skeleton-chk"> Show Pivot
                 Skeleton</label>
             <!-- Shadows removed per request -->
@@ -634,7 +636,7 @@
 
         // --- GLOBALS ---
         let scene, camera, renderer, controls, gui;
-        let rootGroup;
+        let rootGroup, worldGrid, worldAxes;
         let pmremGenerator;
         let raycaster, mouse;
         let lightGroup; // Container for rotatable lights
@@ -707,9 +709,10 @@
             scene.add(rootGroup);
 
             // Grid
-            const grid = new THREE.GridHelper(30, 30, 0x333333, 0x0f0f0f);
-            scene.add(grid);
-            scene.add(new THREE.AxesHelper(1));
+            worldGrid = new THREE.GridHelper(30, 30, 0x333333, 0x0f0f0f);
+            scene.add(worldGrid);
+            worldAxes = new THREE.AxesHelper(1);
+            scene.add(worldAxes);
 
             // Improved Studio Lighting Setup
             ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
@@ -794,6 +797,10 @@
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
 
+            document.getElementById('grid-chk').addEventListener('change', e => {
+                worldGrid.visible = e.target.checked;
+                worldAxes.visible = e.target.checked;
+            });
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
 
@@ -1513,14 +1520,10 @@
 
         function addSkeletonHelper(group, color, size) {
             const axes = new THREE.AxesHelper(size);
-            const geom = new THREE.SphereGeometry(size / 5, 4, 4);
-            const mat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
-            const sphere = new THREE.Mesh(geom, mat);
             group.add(axes);
-            group.add(sphere);
             const visible = document.getElementById('skeleton-chk').checked;
-            axes.visible = visible; sphere.visible = visible;
-            skeletonHelpers.push(axes, sphere);
+            axes.visible = visible;
+            skeletonHelpers.push(axes);
         }
 
         function updateStats() {
