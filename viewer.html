@@ -1443,6 +1443,18 @@
 
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen();
 
+                // Add sticking points at real min/max
+                const snapThreshold = span * 0.02;
+                ctrl.onChange(val => {
+                    if (Math.abs(val - range.min) < snapThreshold) {
+                        guiData[name] = range.min;
+                        ctrl.updateDisplay();
+                    } else if (Math.abs(val - range.max) < snapThreshold) {
+                        guiData[name] = range.max;
+                        ctrl.updateDisplay();
+                    }
+                });
+
                 // Add click-to-copy and accessibility attributes
                 setTimeout(() => {
                     const label = ctrl.domElement.querySelector('.name');
