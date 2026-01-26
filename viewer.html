@@ -1127,8 +1127,8 @@
         function buildGUI() {
             // Instead of destroying everything, we rebuild the list properly
             // Clear existing UI references but keep guiData for state persistence
-            gui.folders.forEach(f => f.destroy());
-            gui.controllers.forEach(c => c.destroy());
+            [...gui.folders].forEach(f => f.destroy());
+            [...gui.controllers].forEach(c => c.destroy());
             guiControllers = [];
 
             const sortedKeys = Array.from(datarefRanges.keys()).sort();
@@ -1283,10 +1283,12 @@
         }
 
         function filterDataRefs(e) {
-            const term = e.target.value.toLowerCase();
+            const term = (e.target && e.target.value !== undefined ? e.target.value : e).toLowerCase();
             guiControllers.forEach(item => {
-                const li = item.controller.domElement.closest('.lil-gui .children .controller');
-                if (li) li.style.display = item.name.toLowerCase().includes(term) ? '' : 'none';
+                if (item.controller && item.controller.domElement) {
+                    const isVisible = item.name.toLowerCase().includes(term);
+                    item.controller.domElement.style.display = isVisible ? '' : 'none';
+                }
             });
         }
 
