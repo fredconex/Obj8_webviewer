@@ -763,7 +763,7 @@
             scene.environmentIntensity = settings.envIntensity;
 
             // Load default HDRI
-            loadHDRI('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/royal_esplanade_1k.hdr');
+            loadHDRI('https://unpkg.com/three@0.172.0/examples/textures/equirectangular/royal_esplanade_1k.hdr');
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -1167,7 +1167,8 @@
                     const url = URL.createObjectURL(f);
                     texLoader.load(url, (tex) => {
                         const isNormalMap = f.name.toLowerCase().includes('_nrm');
-                        tex.colorSpace = isNormalMap ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+                        const isMatMap = f.name.toLowerCase().includes('_mat');
+                        tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
                         tex.name = f.name.toLowerCase();
                         // X-Plane OBJ8 uses standard UVs where 0,0 is bottom-left
                         // Three.js flipY=true (default) means 0 is bottom
@@ -1362,6 +1363,15 @@
                 geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
                 geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
                 geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+
+                // computeTangents requires position, normal, and uv. 
+                // It also works better on indexed geometry.
+                if (pos.length / 3 > 0) {
+                    const tempIndices = [];
+                    for (let n = 0; n < pos.length / 3; n++) tempIndices.push(n);
+                    geo.setIndex(tempIndices);
+                    geo.computeTangents();
+                }
 
                 const mat = getMaterial(texName, litName, normName);
                 const mesh = new THREE.Mesh(geo, mat);
@@ -1612,9 +1622,15 @@
                 const findTex = (name) => {
                     if (!name || name === "default") return null;
                     const low = name.toLowerCase();
-                    const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp",
-                        low.replace(/\.[^/.]+$/, "") + ".png", low.replace(/\.[^/.]+$/, "") + ".jpg"];
-                    for (const c of candidates) { if (loadedTextures.has(c)) return loadedTextures.get(c); }
+                    const candidates = [
+                        low,
+                        low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp",
+                        low.replace(/\.[^/.]+$/, "") + ".png",
+                        low.replace(/\.[^/.]+$/, "") + ".jpg"
+                    ];
+                    for (const c of candidates) {
+                        if (loadedTextures.has(c)) return loadedTextures.get(c);
+                    }
                     return null;
                 };
 
@@ -1626,13 +1642,41 @@
                     const ltex = findTex(litBase);
                     if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1.0; }
 
+                    // Robust base name for auto-detecting NRM/MAT
+                    // If baseName is "something_ALB.png", root is "something"
+                    let rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
+
                     let ntex = findTex(normBase);
-                    if (!ntex && baseName) {
-                        // Auto-detect _NRM if no normal texture is specified
-                        const baseWithoutExt = baseName.replace(/\.[^/.]+$/, "");
-                        ntex = findTex(baseWithoutExt + "_NRM") || findTex(baseWithoutExt + "_nrm");
+                    if (!ntex) {
+                        ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
                     }
                     if (ntex) { mat.normalMap = ntex; mat.normalScale.set(1, 1); }
+
+                    const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
+                    if (mtex) {
+                        mtex.channel = 0; // Use uv1 for AO map
+                        mat.roughnessMap = mtex;
+                        mat.metalnessMap = mtex;
+                        mat.aoMap = mtex;
+                        mat.roughness = 1.0;
+                        mat.metalness = 1.0;
+
+                        // Fix channel mapping: X-Plane [R:Metal, G:Rough, B:AO] -> Three.js [R:AO, G:Rough, B:Metal]
+                        mat.onBeforeCompile = (shader) => {
+                            // Metalness: Three.js uses .b, X-Plane uses .r
+                            shader.fragmentShader = shader.fragmentShader.replace(
+                                'metalnessFactor *= texelMetalness.b;',
+                                'metalnessFactor *= texelMetalness.r;'
+                            );
+                            // AO: Three.js uses .r, X-Plane uses .b
+                            // AO snippet in StandardMaterial usually looks like:
+                            // ambientOcclusion = ( texture2D( aoMap, vAoMapUv ).r - 1.0 ) * aoMapIntensity + 1.0;
+                            shader.fragmentShader = shader.fragmentShader.replace(
+                                'texture2D( aoMap, vAoMapUv ).r',
+                                'texture2D( aoMap, vAoMapUv ).b'
+                            );
+                        };
+                    }
                 } else if (currentViewMode === 'albedo') {
                     const tex = findTex(baseName);
                     if (tex) mat.map = tex;
