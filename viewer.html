@@ -497,13 +497,44 @@
                 opacity: 0;
             }
         }
+
+        /* --- CONTEXT MENU --- */
+        #context-menu {
+            position: fixed;
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 5px 0;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            min-width: 150px;
+        }
+
+        .context-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #ddd;
+            transition: background 0.1s;
+        }
+
+        .context-menu-item:hover {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .context-menu-item.disabled {
+            color: #555;
+            pointer-events: none;
+        }
     </style>
 
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "three": "https://unpkg.com/three@0.172.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
                 "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
             }
         }
@@ -553,6 +584,8 @@
             </div>
             <div class="stat-row"><span>Ambience</span><input type="range" id="light-amb" min="0" max="2" step="0.1">
             </div>
+            <div class="stat-row"><span>Rotation</span><input type="range" id="light-rot" min="0" max="360" step="1">
+            </div>
 
             <h2>Material Defaults</h2>
             <div class="stat-row"><span>Roughness</span><input type="range" id="mat-rough" min="0" max="1" step="0.05">
@@ -563,6 +596,12 @@
 
         <!-- MAIN 3D VIEWPORT -->
         <div id="viewport"></div>
+    </div>
+
+    <!-- CONTEXT MENU -->
+    <div id="context-menu">
+        <div class="context-menu-item" id="cm-hide">Hide Selected Mesh</div>
+        <div class="context-menu-item" id="cm-unhide-all">Unhide All</div>
     </div>
 
     <!-- FLOATING CONTROLS (Right) -->
@@ -601,6 +640,8 @@
         let rootGroup;
         let pmremGenerator;
         let raycaster, mouse;
+        let lightGroup; // Container for rotatable lights
+        let mouseDownPos = { x: 0, y: 0 };
 
         // Logic Data
         let animationControllers = [];
@@ -623,7 +664,7 @@
         // Settings (Defaults)
         const settings = {
             head: 0.8, sun: 1.5, fill: 0.6, back: 0.5, amb: 0.6,
-            rough: 0.5, metal: 0.2
+            rough: 0.5, metal: 0.2, lightRot: 0
         };
 
         // Lights
@@ -644,6 +685,8 @@
             renderer.setSize(viewport.clientWidth, viewport.clientHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
             // Shadows disabled
             renderer.shadowMap.enabled = false;
             viewport.appendChild(renderer.domElement);
@@ -655,6 +698,7 @@
             // PBR Environment
             pmremGenerator = new THREE.PMREMGenerator(renderer);
             scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+            scene.environmentIntensity = 1.2; // Boost reflections
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -672,21 +716,27 @@
             scene.add(grid);
             scene.add(new THREE.AxesHelper(1));
 
+            // Lighting Group (Rotatable)
+            lightGroup = new THREE.Group();
+            scene.add(lightGroup);
+
             // Lighting (4-Point) - No Shadows
             hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, settings.amb);
             scene.add(hemiLight);
 
             mainLight = new THREE.DirectionalLight(0xffffff, settings.sun);
             mainLight.position.set(5, 10, 5);
-            scene.add(mainLight);
+            lightGroup.add(mainLight);
 
             fillLight = new THREE.DirectionalLight(0xaaccff, settings.fill);
             fillLight.position.set(-5, 2, -5);
-            scene.add(fillLight);
+            lightGroup.add(fillLight);
 
             backLight = new THREE.DirectionalLight(0xffffff, settings.back);
             backLight.position.set(0, 5, -10);
-            scene.add(backLight);
+            lightGroup.add(backLight);
+
+            lightGroup.rotation.y = settings.lightRot * (Math.PI / 180);
 
             headlight = new THREE.PointLight(0xffffff, settings.head, 100);
             camera.add(headlight);
@@ -725,9 +775,16 @@
                 currentViewMode = e.target.value;
                 refreshMaterials();
             });
-            document.getElementById('close-selection')?.addEventListener('click', () => {
-                // Panel is gone, but keeping cleanup for safety
+
+            // Context Menu Events
+            viewport.addEventListener('mousedown', (e) => {
+                mouseDownPos.x = e.clientX;
+                mouseDownPos.y = e.clientY;
             });
+            viewport.addEventListener('contextmenu', onContextMenu);
+            window.addEventListener('click', hideContextMenu);
+            document.getElementById('cm-hide').addEventListener('click', hideSelectedMesh);
+            document.getElementById('cm-unhide-all').addEventListener('click', unhideAllMeshes);
 
             animate();
         }
@@ -745,6 +802,7 @@
             setVal('light-fill', settings.fill);
             setVal('light-back', settings.back);
             setVal('light-amb', settings.amb);
+            setVal('light-rot', settings.lightRot);
             setVal('mat-rough', settings.rough);
             setVal('mat-metal', settings.metal);
 
@@ -755,6 +813,7 @@
             bind('light-fill', e => { settings.fill = parseFloat(e.target.value); fillLight.intensity = settings.fill; });
             bind('light-back', e => { settings.back = parseFloat(e.target.value); backLight.intensity = settings.back; });
             bind('light-amb', e => { settings.amb = parseFloat(e.target.value); hemiLight.intensity = settings.amb; });
+            bind('light-rot', e => { settings.lightRot = parseFloat(e.target.value); lightGroup.rotation.y = settings.lightRot * (Math.PI / 180); });
             bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); refreshMaterials(); });
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
 
@@ -820,6 +879,92 @@
                 selectedMesh = null;
             }
             updateDataRefVisibility();
+        }
+
+        // --- CONTEXT MENU LOGIC ---
+        function onContextMenu(event) {
+            event.preventDefault();
+
+            // Check if we moved significant distance (likely panning)
+            const dx = event.clientX - mouseDownPos.x;
+            const dy = event.clientY - mouseDownPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 5) return; // Ignore if moved more than 5 pixels
+
+            // Try to select mesh under cursor
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(rootGroup.children, true);
+            const hit = intersects.find(i => {
+                if (i.object.type !== 'Mesh') return false;
+                let curr = i.object;
+                while (curr && curr !== scene) {
+                    if (!curr.visible) return false;
+                    curr = curr.parent;
+                }
+                return true;
+            });
+
+            if (hit) {
+                if (selectedMesh !== hit.object) {
+                    selectMesh(hit.object);
+                }
+            } else {
+                // User said deselecting shouldn't happen on right click
+                // So we do nothing here to keep current selection
+            }
+
+            const menu = document.getElementById('context-menu');
+            const hideItem = document.getElementById('cm-hide');
+
+            if (selectedMesh) {
+                hideItem.classList.remove('disabled');
+            } else {
+                hideItem.classList.add('disabled');
+            }
+
+            menu.style.display = 'block';
+            menu.style.left = `${event.clientX}px`;
+            menu.style.top = `${event.clientY}px`;
+        }
+
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+
+        function hideSelectedMesh() {
+            if (selectedMesh) {
+                selectedMesh.visible = false;
+                deselectMesh();
+                hideContextMenu();
+            }
+        }
+
+        function unhideAllMeshes() {
+            const showSkeleton = document.getElementById('skeleton-chk').checked;
+
+            rootGroup.traverse(obj => {
+                // If it's a mesh or a group, unhide it
+                if (obj.isMesh || obj.isGroup) {
+                    obj.visible = true;
+                }
+
+                // If it's a skeleton helper part, check the global skeleton visibility setting
+                if (skeletonHelpers.includes(obj)) {
+                    obj.visible = showSkeleton;
+                }
+            });
+            // Update sidebar icons
+            loadedObjects.forEach(obj => {
+                obj.visible = true;
+                obj.eye.classList.remove('hidden');
+                obj.div.style.opacity = '1';
+            });
+            soloModeObject = null;
+            hideContextMenu();
         }
 
         function resetViewer() {
