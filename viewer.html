@@ -646,7 +646,7 @@
         // Resources
         let loadedTextures = new Map();
         let materialCache = new Map();
-        let selectedMesh = null;
+        let selectedMeshes = [];
 
         // Stats
         let totalVertices = 0;
@@ -732,8 +732,11 @@
                     centerCamera();
                 }
             });
-            // Click listener for selection
-            viewport.addEventListener('dblclick', onDoubleClick);
+            viewport.addEventListener('mousedown', (e) => {
+                mouseDownPos.x = e.clientX;
+                mouseDownPos.y = e.clientY;
+            });
+            viewport.addEventListener('click', onClick);
 
             // File Handling
             const drop = document.getElementById('drop-target');
@@ -755,11 +758,7 @@
                 refreshMaterials();
             });
 
-            // Context Menu Events
-            viewport.addEventListener('mousedown', (e) => {
-                mouseDownPos.x = e.clientX;
-                mouseDownPos.y = e.clientY;
-            });
+
             viewport.addEventListener('contextmenu', onContextMenu);
             window.addEventListener('click', hideContextMenu);
             document.getElementById('cm-hide').addEventListener('click', hideSelectedMesh);
@@ -792,23 +791,26 @@
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
 
-        function onDoubleClick(event) {
+        function onClick(event) {
             if (event.button !== 0) return; // Left click only
-            // Calculate mouse position in normalized device coordinates
+
+            // Check if we moved significant distance (likely panning)
+            const dx = event.clientX - mouseDownPos.x;
+            const dy = event.clientY - mouseDownPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 5) return;
+
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
 
-            // Intersect objects (recursive)
             const intersects = raycaster.intersectObjects(rootGroup.children, true);
 
             if (intersects.length > 0) {
-                // Find the first visible mesh
                 const hit = intersects.find(i => {
                     if (i.object.type !== 'Mesh') return false;
-                    // Check if object and all ancestors (up to rootGroup) are visible
                     let curr = i.object;
                     while (curr && curr !== scene) {
                         if (!curr.visible) return false;
@@ -818,38 +820,58 @@
                 });
 
                 if (hit) {
-                    selectMesh(hit.object);
+                    selectMesh(hit.object, event.shiftKey);
                 } else {
-                    deselectMesh();
+                    if (!event.shiftKey) deselectMesh();
                 }
             } else {
-                deselectMesh();
+                if (!event.shiftKey) deselectMesh();
             }
         }
 
-        function selectMesh(mesh) {
-            if (selectedMesh === mesh) {
+        function selectMesh(mesh, append = false) {
+            if (!append) {
+                if (selectedMeshes.length === 1 && selectedMeshes[0] === mesh) {
+                    deselectMesh();
+                    return;
+                }
                 deselectMesh();
-                return;
+                selectedMeshes = [mesh];
+            } else {
+                const idx = selectedMeshes.indexOf(mesh);
+                if (idx > -1) {
+                    restoreMeshMaterial(mesh);
+                    selectedMeshes.splice(idx, 1);
+                    updateDataRefVisibility();
+                    return;
+                }
+                selectedMeshes.push(mesh);
             }
-            deselectMesh();
 
-            selectedMesh = mesh;
-            // Backup the original material and replace with a cloned one for highlighting
-            selectedMesh._oldMaterial = mesh.material;
-            selectedMesh.material = mesh.material.clone();
-            selectedMesh.material.emissive.setHex(0x0077ff); // Lit blue
-            selectedMesh.material.emissiveIntensity = 2.0;    // Boosted
-            selectedMesh.material.emissiveMap = null;         // Disable emissive map for highlight
+            highlightMesh(mesh);
             updateDataRefVisibility();
         }
 
-        function deselectMesh() {
-            if (selectedMesh) {
-                selectedMesh.material.dispose();
-                selectedMesh.material = selectedMesh._oldMaterial;
-                selectedMesh = null;
+        function highlightMesh(mesh) {
+            if (mesh._oldMaterial) return;
+            mesh._oldMaterial = mesh.material;
+            mesh.material = mesh.material.clone();
+            mesh.material.emissive.setHex(0x0077ff);
+            mesh.material.emissiveIntensity = 2.0;
+            mesh.material.emissiveMap = null;
+        }
+
+        function restoreMeshMaterial(mesh) {
+            if (mesh._oldMaterial) {
+                mesh.material.dispose();
+                mesh.material = mesh._oldMaterial;
+                mesh._oldMaterial = null;
             }
+        }
+
+        function deselectMesh() {
+            selectedMeshes.forEach(m => restoreMeshMaterial(m));
+            selectedMeshes = [];
             updateDataRefVisibility();
         }
 
@@ -881,8 +903,8 @@
             });
 
             if (hit) {
-                if (selectedMesh !== hit.object) {
-                    selectMesh(hit.object);
+                if (!selectedMeshes.includes(hit.object)) {
+                    selectMesh(hit.object, event.shiftKey);
                 }
             } else {
                 // User said deselecting shouldn't happen on right click
@@ -892,7 +914,7 @@
             const menu = document.getElementById('context-menu');
             const hideItem = document.getElementById('cm-hide');
 
-            if (selectedMesh) {
+            if (selectedMeshes.length > 0) {
                 hideItem.classList.remove('disabled');
             } else {
                 hideItem.classList.add('disabled');
@@ -908,8 +930,8 @@
         }
 
         function hideSelectedMesh() {
-            if (selectedMesh) {
-                selectedMesh.visible = false;
+            if (selectedMeshes.length > 0) {
+                selectedMeshes.forEach(m => m.visible = false);
                 deselectMesh();
                 hideContextMenu();
             }
@@ -1345,32 +1367,45 @@
         }
 
         function interpolate(val, keys) {
-            for (let i = 0; i < keys.length - 1; i++) {
-                const k1 = keys[i];
-                const k2 = keys[i + 1];
-
-                // Check if val is between k1 and k2 (regardless of order)
-                const min = Math.min(k1.val, k2.val);
-                const max = Math.max(k1.val, k2.val);
-
-                if (val >= min && val <= max) {
-                    const t = (val - k1.val) / (k2.val - k1.val);
-                    if (k1.pos) return new THREE.Vector3().copy(k1.pos).lerp(k2.pos, t);
-                    return k1.angle + (k2.angle - k1.angle) * t;
-                }
-            }
-            // Clamp
+            if (keys.length === 0) return null;
             const first = keys[0];
             const last = keys[keys.length - 1];
+            if (keys.length === 1) return first.pos ? first.pos.clone() : first.angle;
 
-            // Determine direction to clamp correctly
-            if (first.val < last.val) {
-                if (val < first.val) return first.pos || first.angle;
-                return last.pos || last.angle;
+            let k1, k2;
+            const isIncreasing = first.val < last.val;
+
+            if (isIncreasing) {
+                if (val <= first.val) {
+                    k1 = keys[0]; k2 = keys[1];
+                } else if (val >= last.val) {
+                    k1 = keys[keys.length - 2]; k2 = keys[keys.length - 1];
+                } else {
+                    for (let i = 0; i < keys.length - 1; i++) {
+                        if (val >= keys[i].val && val <= keys[i + 1].val) {
+                            k1 = keys[i]; k2 = keys[i + 1]; break;
+                        }
+                    }
+                }
             } else {
-                if (val > first.val) return first.pos || first.angle;
-                return last.pos || last.angle;
+                if (val >= first.val) {
+                    k1 = keys[0]; k2 = keys[1];
+                } else if (val <= last.val) {
+                    k1 = keys[keys.length - 2]; k2 = keys[keys.length - 1];
+                } else {
+                    for (let i = 0; i < keys.length - 1; i++) {
+                        if (val <= keys[i].val && val >= keys[i + 1].val) {
+                            k1 = keys[i]; k2 = keys[i + 1]; break;
+                        }
+                    }
+                }
             }
+
+            if (!k1 || !k2) return first.pos ? first.pos.clone() : first.angle;
+
+            const t = (val - k1.val) / (k2.val - k1.val);
+            if (k1.pos) return new THREE.Vector3().copy(k1.pos).lerp(k2.pos, t);
+            return k1.angle + (k2.angle - k1.angle) * t;
         }
 
         function createWrapperGroup(stack) {
@@ -1448,16 +1483,17 @@
             rootGroup.traverse(obj => {
                 if (obj.isMesh) {
                     const t = obj._textureName, l = obj._litName, n = obj._normalName;
-                    if (selectedMesh === obj) {
+                    if (selectedMeshes.includes(obj)) {
                         obj._oldMaterial = getMaterial(t, l, n);
                         const highlight = obj._oldMaterial.clone();
                         highlight.emissive.setHex(0x0077ff);
                         highlight.emissiveIntensity = 2.0;
                         highlight.emissiveMap = null;
-                        obj.material.dispose();
+                        if (obj.material && obj.material.dispose) obj.material.dispose();
                         obj.material = highlight;
                     } else {
                         obj.material = getMaterial(t, l, n);
+                        obj._oldMaterial = null;
                     }
                 }
             });
@@ -1487,10 +1523,13 @@
             const box = new THREE.Box3();
             let hasBounds = false;
 
-            if (selectedMesh) {
+            if (selectedMeshes.length > 0) {
                 // Center on selection
-                selectedMesh.geometry.computeBoundingBox();
-                box.copy(selectedMesh.geometry.boundingBox).applyMatrix4(selectedMesh.matrixWorld);
+                selectedMeshes.forEach(m => {
+                    m.geometry.computeBoundingBox();
+                    const b = new THREE.Box3().copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
+                    box.union(b);
+                });
                 hasBounds = true;
             } else {
                 // Center on all visible meshes
@@ -1549,17 +1588,19 @@
             // Determine active datarefs based on visibility AND potential selection
             const activeDatarefs = new Set();
 
-            if (selectedMesh) {
-                // Only show datarefs relevant to this specific mesh and its parents
-                let curr = selectedMesh;
-                while (curr && curr !== rootGroup && curr !== scene) {
-                    for (let ctrl of animationControllers) {
-                        if (ctrl.target === curr && ctrl.dref) {
-                            activeDatarefs.add(ctrl.dref);
+            if (selectedMeshes.length > 0) {
+                // Only show datarefs relevant to these specific meshes and their parents
+                selectedMeshes.forEach(mesh => {
+                    let curr = mesh;
+                    while (curr && curr !== rootGroup && curr !== scene) {
+                        for (let ctrl of animationControllers) {
+                            if (ctrl.target === curr && ctrl.dref) {
+                                activeDatarefs.add(ctrl.dref);
+                            }
                         }
+                        curr = curr.parent;
                     }
-                    curr = curr.parent;
-                }
+                });
             } else {
                 // Normal mode: Show Union of all DataRefs used by currently visible objects
                 loadedObjects.forEach(obj => {
