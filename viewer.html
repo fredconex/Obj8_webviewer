@@ -427,15 +427,63 @@
             display: none;
         }
 
-        .lil-gui .widget {
-            height: 24px;
+        .lil-gui .controller {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            padding: 6px 12px !important;
+            border-bottom: 1px solid #252525;
+            height: auto !important;
         }
 
         .lil-gui .name {
+            width: 100% !important;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            padding-right: 5px;
+            padding-bottom: 4px;
+            order: 1;
+            cursor: copy;
+            user-select: none;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+
+        .lil-gui .widget {
+            width: 100% !important;
+            height: 26px;
+            order: 2;
+        }
+
+        /* Notification style for copy */
+        .copy-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent);
+            color: #000;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            z-index: 1000;
+            pointer-events: none;
+            animation: fadeout 2s forwards;
+        }
+
+        @keyframes fadeout {
+            0% {
+                opacity: 1;
+            }
+
+            80% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
         }
     </style>
 
@@ -499,19 +547,7 @@
         </div>
     </div>
 
-    <!-- SELECTION PANEL (Bottom Right Overlay) -->
-    <div id="selection-panel">
-        <div id="selection-header">
-            <span>Active Part Controls</span>
-            <span class="close-selection" id="close-selection">✕</span>
-        </div>
-        <div id="selection-controls">
-            <!-- Dynamic Sliders appear here -->
-        </div>
-        <div style="font-size: 0.7rem; color: #666; text-align: center; margin-top:5px;">
-            (Updates Global State)
-        </div>
-    </div>
+    <!-- SELECTION PANEL REMOVED -->
 
     <!-- UPLOAD SCREEN -->
     <div id="upload-overlay">
@@ -654,8 +690,8 @@
                 document.getElementById('dref-search').value = '';
                 filterDataRefs({ target: { value: '' } });
             });
-            document.getElementById('close-selection').addEventListener('click', () => {
-                document.getElementById('selection-panel').classList.remove('active');
+            document.getElementById('close-selection')?.addEventListener('click', () => {
+                // Panel is gone, but keeping cleanup for safety
             });
 
             animate();
@@ -713,20 +749,19 @@
 
                 if (hit) {
                     selectMesh(hit.object);
-                    showSelectionControls(hit.object);
                 } else {
                     deselectMesh();
-                    document.getElementById('selection-panel').classList.remove('active');
                 }
             } else {
                 deselectMesh();
-                // Clicked empty space
-                document.getElementById('selection-panel').classList.remove('active');
             }
         }
 
         function selectMesh(mesh) {
-            if (selectedMesh === mesh) return;
+            if (selectedMesh === mesh) {
+                deselectMesh();
+                return;
+            }
             deselectMesh();
 
             selectedMesh = mesh;
@@ -735,6 +770,7 @@
             selectedMesh.material = mesh.material.clone();
             selectedMesh.material.emissive.setHex(0x0077ff); // Lit blue
             selectedMesh.material.emissiveIntensity = 1.0;
+            updateDataRefVisibility();
         }
 
         function deselectMesh() {
@@ -743,72 +779,7 @@
                 selectedMesh.material = selectedMesh._oldMaterial;
                 selectedMesh = null;
             }
-        }
-
-        function showSelectionControls(mesh) {
-            const foundDrefs = new Set();
-            let curr = mesh;
-
-            // Traverse up from the mesh to the root, looking for groups that are controlled by animations
-            while (curr && curr !== rootGroup && curr !== scene) {
-                // Check if curr is a target in animationControllers
-                for (let ctrl of animationControllers) {
-                    if (ctrl.target === curr && ctrl.dref) {
-                        foundDrefs.add(ctrl.dref);
-                    }
-                }
-                curr = curr.parent;
-            }
-
-            const panel = document.getElementById('selection-panel');
-            const container = document.getElementById('selection-controls');
-            container.innerHTML = ''; // Clear previous
-
-            if (foundDrefs.size === 0) {
-                // No datarefs found for this part
-                container.innerHTML = '<div style="font-size:0.8rem; color:#888;">Static Object (No DataRefs)</div>';
-            } else {
-                // Create sliders for found DataRefs
-                foundDrefs.forEach(dref => {
-                    const range = datarefRanges.get(dref);
-                    const currentVal = guiData[dref] !== undefined ? guiData[dref] : 0;
-
-                    // Sanity check range
-                    let min = range.min, max = range.max;
-                    if (min === Infinity) min = 0;
-                    if (max === -Infinity) max = 1;
-                    if (min === max) { min -= 1; max += 1; }
-
-                    const row = document.createElement('div');
-                    row.className = 'control-row';
-
-                    const labelDiv = document.createElement('div');
-                    labelDiv.className = 'control-label';
-                    labelDiv.innerHTML = `<span>${dref}</span> <span class="control-val">${currentVal.toFixed(2)}</span>`;
-
-                    const margin = (max - min) * 0.05; // 10% total (5% each side)
-                    const slider = document.createElement('input');
-                    slider.type = 'range';
-                    slider.min = min - margin;
-                    slider.max = max + margin;
-                    slider.step = (max - min) === 0 ? 0.01 : (max - min) / 100;
-                    slider.value = currentVal;
-
-                    slider.addEventListener('input', (e) => {
-                        const val = parseFloat(e.target.value);
-                        guiData[dref] = val; // Update logic data
-                        labelDiv.querySelector('.control-val').innerText = val.toFixed(2);
-                        // Update the Main Lil-GUI as well if it exists
-                        const mainCtrl = guiControllers.find(c => c.name === dref);
-                        if (mainCtrl) mainCtrl.controller.updateDisplay();
-                    });
-
-                    row.appendChild(labelDiv);
-                    row.appendChild(slider);
-                    container.appendChild(row);
-                });
-            }
-            panel.classList.add('active');
+            updateDataRefVisibility();
         }
 
         function resetViewer() {
@@ -830,7 +801,6 @@
             document.getElementById('obj-list-container').innerHTML = '';
             document.getElementById('dref-search').value = '';
             deselectMesh();
-            document.getElementById('selection-panel').classList.remove('active');
 
             if (gui) {
                 // Clear all controllers and folders from the GUI
@@ -1158,6 +1128,19 @@
                 }
 
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen();
+
+                // Add click-to-copy to the label
+                setTimeout(() => {
+                    const label = ctrl.domElement.querySelector('.name');
+                    if (label) {
+                        label.addEventListener('dblclick', (e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(name);
+                            showToast(`Copied: ${name}`);
+                        });
+                    }
+                }, 0);
+
                 guiControllers.push({ name: name, controller: ctrl });
             });
 
@@ -1301,13 +1284,28 @@
         function updateDataRefVisibility() {
             const term = document.getElementById('dref-search').value.toLowerCase();
 
-            // Determine the union of all DataRefs used by currently visible objects
+            // Determine active datarefs based on visibility AND potential selection
             const activeDatarefs = new Set();
-            loadedObjects.forEach(obj => {
-                if (obj.group.visible) {
-                    obj.datarefs.forEach(d => activeDatarefs.add(d));
+
+            if (selectedMesh) {
+                // Only show datarefs relevant to this specific mesh and its parents
+                let curr = selectedMesh;
+                while (curr && curr !== rootGroup && curr !== scene) {
+                    for (let ctrl of animationControllers) {
+                        if (ctrl.target === curr && ctrl.dref) {
+                            activeDatarefs.add(ctrl.dref);
+                        }
+                    }
+                    curr = curr.parent;
                 }
-            });
+            } else {
+                // Normal mode: Show Union of all DataRefs used by currently visible objects
+                loadedObjects.forEach(obj => {
+                    if (obj.group.visible) {
+                        obj.datarefs.forEach(d => activeDatarefs.add(d));
+                    }
+                });
+            }
 
             guiControllers.forEach(item => {
                 if (item.controller && item.controller.domElement) {
@@ -1315,6 +1313,14 @@
                     item.controller.domElement.style.display = isVisible ? '' : 'none';
                 }
             });
+        }
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'copy-toast';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
         }
 
         function onResize() {
