@@ -1,6 +1,7 @@
 <!-- START OF FILE ai_studio_code (71).html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,147 +19,418 @@
             --item-selected: #3a4b5c;
         }
 
-        body { margin: 0; overflow: hidden; background-color: var(--bg-color); font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: var(--text-main); }
-        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+        }
+
         /* --- SCROLLBARS --- */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: var(--panel-bg); }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--panel-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
 
         /* --- LAYOUT --- */
-        #app-container { display: flex; width: 100vw; height: 100vh; }
+        #app-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
 
         /* --- SIDEBAR (Left) --- */
         #sidebar {
-            width: 320px; background: var(--panel-bg); border-right: 1px solid var(--border-color);
-            display: flex; flex-direction: column; flex-shrink: 0;
-            z-index: 10; padding: 15px; box-sizing: border-box;
+            width: 320px;
+            background: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 10;
+            padding: 15px;
+            box-sizing: border-box;
             transition: transform 0.3s;
         }
-        
+
         /* --- MAIN VIEWPORT --- */
-        #viewport { flex-grow: 1; position: relative; overflow: hidden; background: #0f0f0f; }
+        #viewport {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0f0f0f;
+        }
 
         /* --- OVERLAY CONTROLS (Right - DataRefs) --- */
         #ui-right-container {
-            position: absolute; top: 15px; right: 15px; width: 320px;
-            max-height: 90vh; display: flex; flex-direction: column; gap: 8px;
-            pointer-events: none; z-index: 20;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 320px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+            z-index: 20;
         }
-        
+
         #search-container {
-            pointer-events: auto; background: var(--panel-bg);
-            padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); position: relative;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); flex-shrink: 0;
+            pointer-events: auto;
+            background: var(--panel-bg);
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            flex-shrink: 0;
         }
 
         #gui-scroll-wrapper {
-            pointer-events: auto; overflow-y: auto; overflow-x: hidden;
-            border-radius: 4px; max-height: 100%;
+            pointer-events: auto;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-radius: 4px;
+            max-height: 100%;
         }
 
         /* --- FLOATING INSPECTOR (Bottom Right) --- */
         #selection-panel {
-            position: absolute; bottom: 20px; right: 350px; /* Left of the right UI */
-            width: 300px; background: rgba(30, 30, 30, 0.95);
-            border: 1px solid var(--accent); border-radius: 6px;
-            padding: 15px; display: none; flex-direction: column; gap: 10px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+            position: absolute;
+            bottom: 20px;
+            right: 350px;
+            /* Left of the right UI */
+            width: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
             z-index: 30;
         }
-        #selection-panel.active { display: flex; }
-        #selection-header { font-size: 0.85rem; text-transform: uppercase; color: var(--accent); font-weight: bold; border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; }
-        .close-selection { cursor: pointer; color: #aaa; }
-        .close-selection:hover { color: #fff; }
 
-        .control-row { display: flex; flex-direction: column; margin-bottom: 8px; }
-        .control-label { font-size: 0.75rem; color: #ccc; margin-bottom: 4px; display: flex; justify-content: space-between; }
-        .control-val { color: var(--accent); font-family: monospace; }
-        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+        #selection-panel.active {
+            display: flex;
+        }
+
+        #selection-header {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-weight: bold;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .close-selection {
+            cursor: pointer;
+            color: #aaa;
+        }
+
+        .close-selection:hover {
+            color: #fff;
+        }
+
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 8px;
+        }
+
+        .control-label {
+            font-size: 0.75rem;
+            color: #ccc;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .control-val {
+            color: var(--accent);
+            font-family: monospace;
+        }
+
+        input[type=range] {
+            width: 100%;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
 
         /* --- TYPOGRAPHY & ELEMENTS --- */
-        h1 { margin: 0 0 15px 0; font-size: 1rem; color: #fff; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid var(--accent); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        h2 { margin: 15px 0 8px 0; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-        
-        .stat-row { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px; color: #bbb; }
-        .stat-val { font-family: monospace; color: var(--accent); }
+        h1 {
+            margin: 0 0 15px 0;
+            font-size: 1rem;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h2 {
+            margin: 15px 0 8px 0;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+            color: #bbb;
+        }
+
+        .stat-val {
+            font-family: monospace;
+            color: var(--accent);
+        }
 
         /* --- OBJECT LIST --- */
         #obj-list-wrapper {
-            flex-grow: 1; /* Takes remaining height */
+            flex-grow: 1;
+            /* Takes remaining height */
             min-height: 100px;
-            display: flex; flex-direction: column;
+            display: flex;
+            flex-direction: column;
             margin-bottom: 10px;
         }
 
         #obj-list-container {
-            border: 1px solid var(--border-color); background: #161616; 
-            overflow-y: auto; border-radius: 4px; flex-grow: 1;
+            border: 1px solid var(--border-color);
+            background: #161616;
+            overflow-y: auto;
+            border-radius: 4px;
+            flex-grow: 1;
         }
+
         .obj-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 6px 10px; font-size: 0.8rem; border-bottom: 1px solid #252525;
-            cursor: pointer; transition: background 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #252525;
+            cursor: pointer;
+            transition: background 0.1s;
         }
-        .obj-item:hover { background: var(--item-hover); color: #fff; }
-        .obj-item.selected-obj { background: var(--item-selected); }
-        
-        .obj-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        
-        .icon-btn { cursor: pointer; width: 20px; text-align: center; font-weight: bold; color: #666; user-select: none; }
-        .icon-btn:hover { color: #fff; }
-        .eye-btn.hidden { color: #444; }
-        .eye-btn:not(.hidden) { color: var(--accent); }
-        
-        .solo-btn { font-size: 0.7rem; border: 1px solid #444; border-radius: 3px; width: 18px; height: 18px; line-height: 16px; }
-        .solo-btn.active { background: #ffaa00; color: #000; border-color: #ffaa00; }
+
+        .obj-item:hover {
+            background: var(--item-hover);
+            color: #fff;
+        }
+
+        .obj-item.selected-obj {
+            background: var(--item-selected);
+        }
+
+        .obj-name {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .icon-btn {
+            cursor: pointer;
+            width: 20px;
+            text-align: center;
+            font-weight: bold;
+            color: #666;
+            user-select: none;
+        }
+
+        .icon-btn:hover {
+            color: #fff;
+        }
+
+        .eye-btn.hidden {
+            color: #444;
+        }
+
+        .eye-btn:not(.hidden) {
+            color: var(--accent);
+        }
+
+        .solo-btn {
+            font-size: 0.7rem;
+            border: 1px solid #444;
+            border-radius: 3px;
+            width: 18px;
+            height: 18px;
+            line-height: 16px;
+        }
+
+        .solo-btn.active {
+            background: #ffaa00;
+            color: #000;
+            border-color: #ffaa00;
+        }
 
         /* --- CONTROLS --- */
         .btn {
-            background: #2a2a2a; color: #eee; padding: 8px; border-radius: 4px;
-            border: 1px solid #444; cursor: pointer; font-weight: 600; width: 100%;
-            font-size: 0.8rem; margin-top: 5px; text-align: center; transition: 0.2s;
+            background: #2a2a2a;
+            color: #eee;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            font-size: 0.8rem;
+            margin-top: 5px;
+            text-align: center;
+            transition: 0.2s;
         }
-        .btn:hover { background: #3a3a3a; border-color: var(--accent); color: #fff; }
-        .btn-danger { background: #601818; border-color: #802020; width: auto; padding: 4px 8px; font-size: 0.7rem; }
-        .btn-danger:hover { background: #902020; }
 
-        .chk-label { font-size: 0.8rem; color:#ccc; display:flex; align-items:center; margin-top:6px; cursor:pointer; }
-        .chk-label input { margin-right: 8px; accent-color: var(--accent); }
+        .btn:hover {
+            background: #3a3a3a;
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #601818;
+            border-color: #802020;
+            width: auto;
+            padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+
+        .btn-danger:hover {
+            background: #902020;
+        }
+
+        .chk-label {
+            font-size: 0.8rem;
+            color: #ccc;
+            display: flex;
+            align-items: center;
+            margin-top: 6px;
+            cursor: pointer;
+        }
+
+        .chk-label input {
+            margin-right: 8px;
+            accent-color: var(--accent);
+        }
 
         /* --- SEARCH --- */
         #dref-search {
-            width: 100%; box-sizing: border-box; background: #111; border: 1px solid #555; color: #fff;
-            padding: 8px 30px 8px 10px; border-radius: 4px; font-size: 0.85rem;
+            width: 100%;
+            box-sizing: border-box;
+            background: #111;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 8px 30px 8px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
         }
-        #dref-search:focus { outline: none; border-color: var(--accent); }
+
+        #dref-search:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
         #search-clear {
-            position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
-            color: #666; cursor: pointer; font-weight: bold; font-size: 1rem;
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
         }
-        #search-clear:hover { color: #fff; }
+
+        #search-clear:hover {
+            color: #fff;
+        }
 
         /* --- UPLOAD --- */
         #upload-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: rgba(18, 18, 18, 0.98); z-index: 200;
-            pointer-events: auto; transition: opacity 0.4s;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(18, 18, 18, 0.98);
+            z-index: 200;
+            pointer-events: auto;
+            transition: opacity 0.4s;
         }
-        #upload-overlay.hidden { opacity: 0; pointer-events: none; }
+
+        #upload-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
         .drop-box {
-            border: 2px dashed #555; padding: 50px; border-radius: 12px;
-            text-align: center; color: #888; transition: 0.2s; background: #222;
+            border: 2px dashed #555;
+            padding: 50px;
+            border-radius: 12px;
+            text-align: center;
+            color: #888;
+            transition: 0.2s;
+            background: #222;
         }
-        .drop-box:hover { border-color: var(--accent); color: #fff; background: #252525; }
+
+        .drop-box:hover {
+            border-color: var(--accent);
+            color: #fff;
+            background: #252525;
+        }
 
         /* Lil GUI Customization */
-        .lil-gui { width: 100% !important; pointer-events: auto; --background-color: var(--panel-bg); --text-color: #ddd; --widget-color: #333; --hover-color: #444; }
-        .lil-gui .title { display: none; } 
-        .lil-gui .widget { height: 24px; }
+        .lil-gui {
+            width: 100% !important;
+            pointer-events: auto;
+            --background-color: var(--panel-bg);
+            --text-color: #ddd;
+            --widget-color: #333;
+            --hover-color: #444;
+        }
+
+        .lil-gui .title {
+            display: none;
+        }
+
+        .lil-gui .widget {
+            height: 24px;
+        }
     </style>
-    
+
     <script type="importmap">
         {
             "imports": {
@@ -169,17 +441,18 @@
         }
     </script>
 </head>
+
 <body>
 
     <div id="app-container">
         <!-- SIDEBAR -->
         <div id="sidebar" class="hidden-ui">
             <h1>OBJ8 Inspector <button class="btn btn-danger" id="close-btn">Close</button></h1>
-            
+
             <div class="stat-row"><span>Files:</span> <span id="f-count" class="stat-val">0</span></div>
             <div class="stat-row"><span>Vertices:</span> <span id="v-count" class="stat-val">0</span></div>
             <div class="stat-row"><span>Meshes:</span> <span id="m-count" class="stat-val">0</span></div>
-            
+
             <h2>Objects</h2>
             <div id="obj-list-wrapper">
                 <div id="obj-list-container">
@@ -197,8 +470,10 @@
             <div class="stat-row"><span>Sun</span><input type="range" id="light-sun" min="0" max="2" step="0.1"></div>
             <div class="stat-row"><span>Fill</span><input type="range" id="light-fill" min="0" max="2" step="0.1"></div>
             <div class="stat-row"><span>Back</span><input type="range" id="light-back" min="0" max="2" step="0.1"></div>
-            <div class="stat-row"><span>Headlight</span><input type="range" id="light-head" min="0" max="2" step="0.1"></div>
-            <div class="stat-row"><span>Ambience</span><input type="range" id="light-amb" min="0" max="2" step="0.1"></div>
+            <div class="stat-row"><span>Headlight</span><input type="range" id="light-head" min="0" max="2" step="0.1">
+            </div>
+            <div class="stat-row"><span>Ambience</span><input type="range" id="light-amb" min="0" max="2" step="0.1">
+            </div>
         </div>
 
         <!-- MAIN 3D VIEWPORT -->
@@ -253,24 +528,25 @@
         let rootGroup;
         let pmremGenerator;
         let raycaster, mouse;
-        
+
         // Logic Data
-        let animationControllers = []; 
-        let datarefRanges = new Map(); 
+        let animationControllers = [];
+        let datarefRanges = new Map();
         let guiData = {};
         let guiControllers = [];
         let skeletonHelpers = [];
-        let loadedObjects = []; 
-        let soloModeObject = null; 
-        
+        let loadedObjects = [];
+        let soloModeObject = null;
+
         // Resources
         let loadedTextures = new Map();
         let materialCache = new Map();
-        
+        let selectedMesh = null;
+
         // Stats
         let totalVertices = 0;
         let filesLoadedCount = 0;
-        
+
         // Settings (Defaults)
         const settings = {
             head: 0.8, sun: 1.5, fill: 0.6, back: 0.5, amb: 0.6
@@ -287,7 +563,7 @@
             // Scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x121212); // Darker background
-            
+
             // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(viewport.clientWidth, viewport.clientHeight);
@@ -363,7 +639,7 @@
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
             document.getElementById('search-clear').addEventListener('click', () => {
                 document.getElementById('dref-search').value = '';
-                filterDataRefs({target:{value:''}});
+                filterDataRefs({ target: { value: '' } });
             });
             document.getElementById('close-selection').addEventListener('click', () => {
                 document.getElementById('selection-panel').classList.remove('active');
@@ -374,7 +650,7 @@
 
         function loadSettings() {
             const s = localStorage.getItem('xp_obj_viewer_settings_v14');
-            if (s) { try { Object.assign(settings, JSON.parse(s)); } catch(e){} }
+            if (s) { try { Object.assign(settings, JSON.parse(s)); } catch (e) { } }
         }
         function saveSettings() { localStorage.setItem('xp_obj_viewer_settings_v14', JSON.stringify(settings)); }
 
@@ -393,11 +669,12 @@
             bind('light-fill', e => { settings.fill = parseFloat(e.target.value); fillLight.intensity = settings.fill; });
             bind('light-back', e => { settings.back = parseFloat(e.target.value); backLight.intensity = settings.back; });
             bind('light-amb', e => { settings.amb = parseFloat(e.target.value); hemiLight.intensity = settings.amb; });
-            
+
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
 
         function onPointerDown(event) {
+            if (event.button !== 0) return; // Left click only
             // Calculate mouse position in normalized device coordinates
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -409,14 +686,49 @@
             const intersects = raycaster.intersectObjects(rootGroup.children, true);
 
             if (intersects.length > 0) {
-                // Find the first valid mesh
-                const hit = intersects.find(i => i.object.type === 'Mesh');
+                // Find the first visible mesh
+                const hit = intersects.find(i => {
+                    if (i.object.type !== 'Mesh') return false;
+                    // Check if object and all ancestors (up to rootGroup) are visible
+                    let curr = i.object;
+                    while (curr && curr !== scene) {
+                        if (!curr.visible) return false;
+                        curr = curr.parent;
+                    }
+                    return true;
+                });
+
                 if (hit) {
+                    selectMesh(hit.object);
                     showSelectionControls(hit.object);
+                } else {
+                    deselectMesh();
+                    document.getElementById('selection-panel').classList.remove('active');
                 }
             } else {
+                deselectMesh();
                 // Clicked empty space
                 document.getElementById('selection-panel').classList.remove('active');
+            }
+        }
+
+        function selectMesh(mesh) {
+            if (selectedMesh === mesh) return;
+            deselectMesh();
+
+            selectedMesh = mesh;
+            // Backup the original material and replace with a cloned one for highlighting
+            selectedMesh._oldMaterial = mesh.material;
+            selectedMesh.material = mesh.material.clone();
+            selectedMesh.material.emissive.setHex(0x0077ff); // Lit blue
+            selectedMesh.material.emissiveIntensity = 1.0;
+        }
+
+        function deselectMesh() {
+            if (selectedMesh) {
+                selectedMesh.material.dispose();
+                selectedMesh.material = selectedMesh._oldMaterial;
+                selectedMesh = null;
             }
         }
 
@@ -427,7 +739,7 @@
             // Traverse up from the mesh to the root, looking for groups that are controlled by animations
             while (curr && curr !== rootGroup && curr !== scene) {
                 // Check if curr is a target in animationControllers
-                for(let ctrl of animationControllers) {
+                for (let ctrl of animationControllers) {
                     if (ctrl.target === curr && ctrl.dref) {
                         foundDrefs.add(ctrl.dref);
                     }
@@ -447,12 +759,12 @@
                 foundDrefs.forEach(dref => {
                     const range = datarefRanges.get(dref);
                     const currentVal = guiData[dref] !== undefined ? guiData[dref] : 0;
-                    
+
                     // Sanity check range
                     let min = range.min, max = range.max;
-                    if(min === Infinity) min = 0; 
-                    if(max === -Infinity) max = 1;
-                    if(min === max) { min -= 1; max += 1; }
+                    if (min === Infinity) min = 0;
+                    if (max === -Infinity) max = 1;
+                    if (min === max) { min -= 1; max += 1; }
 
                     const row = document.createElement('div');
                     row.className = 'control-row';
@@ -463,9 +775,9 @@
 
                     const slider = document.createElement('input');
                     slider.type = 'range';
-                    slider.min = min - (max-min)*0.1; // Add little padding
-                    slider.max = max + (max-min)*0.1;
-                    slider.step = (max-min)/100;
+                    slider.min = min - (max - min) * 0.1; // Add little padding
+                    slider.max = max + (max - min) * 0.1;
+                    slider.step = (max - min) / 100;
                     slider.value = currentVal;
 
                     slider.addEventListener('input', (e) => {
@@ -474,7 +786,7 @@
                         labelDiv.querySelector('.control-val').innerText = val.toFixed(2);
                         // Update the Main Lil-GUI as well if it exists
                         const mainCtrl = guiControllers.find(c => c.name === dref);
-                        if(mainCtrl) mainCtrl.controller.updateDisplay();
+                        if (mainCtrl) mainCtrl.controller.updateDisplay();
                     });
 
                     row.appendChild(labelDiv);
@@ -494,20 +806,22 @@
             guiControllers = [];
             loadedObjects = [];
             soloModeObject = null;
-            
+
             materialCache.clear();
             loadedTextures.clear();
-            
+
             filesLoadedCount = 0;
             totalVertices = 0;
 
             document.getElementById('obj-list-container').innerHTML = '';
             document.getElementById('dref-search').value = '';
+            deselectMesh();
             document.getElementById('selection-panel').classList.remove('active');
 
             if (gui) {
-                gui.folders.forEach(f => f.destroy());
-                gui.controllers.forEach(c => c.destroy());
+                // Clear all controllers and folders from the GUI
+                [...gui.folders].forEach(f => f.destroy());
+                [...gui.controllers].forEach(c => c.destroy());
             }
 
             document.getElementById('upload-overlay').classList.remove('hidden');
@@ -519,9 +833,9 @@
         function handleDrop(e) {
             e.preventDefault();
             document.getElementById('drop-target').style.borderColor = '#555';
-            if(e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+            if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
         }
-        function handleFile(e) { if(e.target.files.length) processFiles(e.target.files); }
+        function handleFile(e) { if (e.target.files.length) processFiles(e.target.files); }
 
         function processFiles(files) {
             if (filesLoadedCount === 0) {
@@ -530,7 +844,7 @@
                 document.getElementById('ui-right-container').classList.remove('hidden-ui');
             }
             Array.from(files).forEach(file => {
-                if(file.name.toLowerCase().endsWith('.obj')) {
+                if (file.name.toLowerCase().endsWith('.obj')) {
                     const reader = new FileReader();
                     reader.onload = e => parseOBJ8(e.target.result, file.name);
                     reader.readAsText(file);
@@ -551,26 +865,26 @@
             const vertices = [];
             const indices = [];
             const lines = text.split(/\r?\n/);
-            
+
             let currentTexture = "default";
             // Pre-scan texture
-            for(let i=0; i<Math.min(lines.length, 50); i++) {
+            for (let i = 0; i < Math.min(lines.length, 50); i++) {
                 const parts = lines[i].trim().split(/\s+/);
                 if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; break; }
             }
 
             const groupStack = [{ object: fileGroup }];
-            const currentGroup = () => groupStack[groupStack.length-1].object;
+            const currentGroup = () => groupStack[groupStack.length - 1].object;
             let currentAnimKey = null;
 
-            for(let i=0; i<lines.length; i++) {
+            for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].split('#')[0].trim();
-                if(!line) continue;
+                if (!line) continue;
                 const tokens = line.split(/\s+/).filter(t => t.length > 0);
                 const cmd = tokens[0];
-                
+
                 try {
-                     if (cmd === 'VT') {
+                    if (cmd === 'VT') {
                         vertices.push({
                             x: parseFloat(tokens[1]), y: parseFloat(tokens[2]), z: parseFloat(tokens[3]),
                             nx: parseFloat(tokens[4]), ny: parseFloat(tokens[5]), nz: parseFloat(tokens[6]),
@@ -579,7 +893,7 @@
                         totalVertices++;
                     }
                     else if (cmd.startsWith('IDX')) {
-                        for(let j=1; j<tokens.length; j++) indices.push(parseInt(tokens[j]));
+                        for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
                         createMesh(tokens, vertices, indices, currentGroup, currentTexture);
@@ -597,19 +911,19 @@
                         let isStatic = false;
                         if (tokens.length <= 4) isStatic = true;
                         else if (tokens.length >= 7 && !isNaN(parseFloat(tokens[6]))) {
-                             const x1=parseFloat(tokens[1]), x2=parseFloat(tokens[4]);
-                             if (Math.abs(x1-x2) < 0.0001) isStatic = true; 
+                            const x1 = parseFloat(tokens[1]), x2 = parseFloat(tokens[4]);
+                            if (Math.abs(x1 - x2) < 0.0001) isStatic = true;
                         }
 
                         if (isStatic) {
                             const wrapper = createWrapperGroup(groupStack);
-                            let x=0, y=0, z=0;
-                            if (tokens.length>=4) { x=parseFloat(tokens[1]); y=parseFloat(tokens[2]); z=parseFloat(tokens[3]); }
-                            wrapper.position.set(x,y,z);
+                            let x = 0, y = 0, z = 0;
+                            if (tokens.length >= 4) { x = parseFloat(tokens[1]); y = parseFloat(tokens[2]); z = parseFloat(tokens[3]); }
+                            wrapper.position.set(x, y, z);
                             addSkeletonHelper(wrapper, 0xffff00, 0.05);
                         } else {
                             const wrapper = createWrapperGroup(groupStack);
-                            const dref = tokens[tokens.length-1];
+                            const dref = tokens[tokens.length - 1];
                             const v1 = parseFloat(tokens[1]), v2 = parseFloat(tokens[2]);
                             const p1 = new THREE.Vector3(parseFloat(tokens[3]), parseFloat(tokens[4]), parseFloat(tokens[5]));
                             const p2 = new THREE.Vector3(parseFloat(tokens[6]), parseFloat(tokens[7]), parseFloat(tokens[8]));
@@ -624,17 +938,17 @@
                         const axis = new THREE.Vector3(parseFloat(tokens[1]), parseFloat(tokens[2]), parseFloat(tokens[3])).normalize();
 
                         if (isStatic) {
-                             const wrapper = createWrapperGroup(groupStack);
-                             const angle = parseFloat(tokens[4]);
-                             wrapper.quaternion.setFromAxisAngle(axis, angle * (Math.PI/180));
-                             addSkeletonHelper(wrapper, 0xffaa00, 0.05);
+                            const wrapper = createWrapperGroup(groupStack);
+                            const angle = parseFloat(tokens[4]);
+                            wrapper.quaternion.setFromAxisAngle(axis, angle * (Math.PI / 180));
+                            addSkeletonHelper(wrapper, 0xffaa00, 0.05);
                         } else {
-                             const wrapper = createWrapperGroup(groupStack);
-                             const dref = tokens[8];
-                             const v1 = parseFloat(tokens[6]), v2 = parseFloat(tokens[7]);
-                             registerDataRef(dref, v1, v2);
-                             animationControllers.push({ type: 'rotate', target: wrapper, dref: dref, axis: axis, keys: [{val: v1, angle: parseFloat(tokens[4])}, {val: v2, angle: parseFloat(tokens[5])}] });
-                             addSkeletonHelper(wrapper, 0xff0000, 0.1);
+                            const wrapper = createWrapperGroup(groupStack);
+                            const dref = tokens[8];
+                            const v1 = parseFloat(tokens[6]), v2 = parseFloat(tokens[7]);
+                            registerDataRef(dref, v1, v2);
+                            animationControllers.push({ type: 'rotate', target: wrapper, dref: dref, axis: axis, keys: [{ val: v1, angle: parseFloat(tokens[4]) }, { val: v2, angle: parseFloat(tokens[5]) }] });
+                            addSkeletonHelper(wrapper, 0xff0000, 0.1);
                         }
                     }
                     else if (cmd === 'ANIM_trans_begin') {
@@ -662,17 +976,17 @@
                         }
                     }
                     else if (cmd === 'ANIM_hide' || cmd === 'ANIM_show') {
-                         if (tokens.length >= 4) {
+                        if (tokens.length >= 4) {
                             const v1 = parseFloat(tokens[1]), v2 = parseFloat(tokens[2]), dref = tokens[3];
                             registerDataRef(dref, v1, v2);
                             const wrapper = createWrapperGroup(groupStack);
                             animationControllers.push({ type: cmd === 'ANIM_hide' ? 'hide' : 'show', target: wrapper, dref: dref, min: v1, max: v2 });
-                         }
+                        }
                     }
                 } catch (e) { }
             }
-            
-            buildGUI(); 
+
+            buildGUI();
             updateStats();
             centerCamera();
         }
@@ -683,22 +997,22 @@
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
             const pos = [], norm = [], uv = [];
-            
-            for(let k=0; k<count; k++) {
+
+            for (let k = 0; k < count; k++) {
                 let vIdx = offset + k;
-                if(indices.length > 0) vIdx = (vIdx < indices.length) ? indices[vIdx] : 0;
-                if(vIdx < vertices.length) {
+                if (indices.length > 0) vIdx = (vIdx < indices.length) ? indices[vIdx] : 0;
+                if (vIdx < vertices.length) {
                     const v = vertices[vIdx];
                     pos.push(v.x, v.y, v.z);
                     norm.push(v.nx, v.ny, v.nz);
                     uv.push(v.u, v.v);
                 }
             }
-            if(pos.length > 0) {
+            if (pos.length > 0) {
                 geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
                 geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
                 geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-                
+
                 const mat = getMaterial(texName);
                 const mesh = new THREE.Mesh(geo, mat);
                 // Shadows removed
@@ -710,16 +1024,16 @@
             const container = document.getElementById('obj-list-container');
             const div = document.createElement('div');
             div.className = 'obj-item';
-            
+
             const nameSpan = document.createElement('span');
             nameSpan.className = 'obj-name';
             nameSpan.title = name;
             nameSpan.textContent = name;
-            
+
             const eye = document.createElement('span');
             eye.className = 'icon-btn eye-btn';
             eye.textContent = '👁';
-            
+
             const solo = document.createElement('span');
             solo.className = 'icon-btn solo-btn';
             solo.textContent = 'S';
@@ -740,7 +1054,7 @@
             // Solo Mode
             solo.onclick = (e) => {
                 e.stopPropagation();
-                
+
                 // Toggle Solo
                 if (soloModeObject === objRecord) {
                     // Turn OFF Solo
@@ -756,7 +1070,7 @@
                     if (soloModeObject) soloModeObject.solo.classList.remove('active');
                     soloModeObject = objRecord;
                     solo.classList.add('active');
-                    
+
                     loadedObjects.forEach(o => {
                         if (o === soloModeObject) {
                             o.group.visible = true;
@@ -778,7 +1092,7 @@
             };
             div.onmouseleave = () => {
                 div.classList.remove('selected-obj');
-                if(boxHelper) scene.remove(boxHelper);
+                if (boxHelper) scene.remove(boxHelper);
                 boxHelper = null;
             };
 
@@ -812,31 +1126,31 @@
                 if (span === 0) span = 1;
                 const margin = span * 0.10;
                 min -= margin; max += margin;
-                
+
                 // Set default to 0 if valid, otherwise min
                 if (guiData[name] === undefined) {
                     guiData[name] = (0 >= min && 0 <= max) ? 0 : range.min;
                 }
-                
+
                 // Add sync listener to update floating selection panel if it's open
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen().onChange((val) => {
-                   // If the floating panel is open and has this input, update it
-                   const panel = document.getElementById('selection-controls');
-                   // This is a bit brute-force for the UI sync but works:
-                   // The sliders in the floating panel are manual inputs.
-                   // We don't have direct references to them here, but they read guiData on their own input.
+                    // If the floating panel is open and has this input, update it
+                    const panel = document.getElementById('selection-controls');
+                    // This is a bit brute-force for the UI sync but works:
+                    // The sliders in the floating panel are manual inputs.
+                    // We don't have direct references to them here, but they read guiData on their own input.
                 });
                 guiControllers.push({ name: name, controller: ctrl });
             });
             const searchVal = document.getElementById('dref-search').value;
-            if(searchVal) filterDataRefs({target: {value: searchVal}});
+            if (searchVal) filterDataRefs({ target: { value: searchVal } });
         }
 
         function interpolate(val, keys) {
             for (let i = 0; i < keys.length - 1; i++) {
                 const k1 = keys[i];
-                const k2 = keys[i+1];
-                
+                const k2 = keys[i + 1];
+
                 // Check if val is between k1 and k2 (regardless of order)
                 const min = Math.min(k1.val, k2.val);
                 const max = Math.max(k1.val, k2.val);
@@ -849,8 +1163,8 @@
             }
             // Clamp
             const first = keys[0];
-            const last = keys[keys.length-1];
-            
+            const last = keys[keys.length - 1];
+
             // Determine direction to clamp correctly
             if (first.val < last.val) {
                 if (val < first.val) return first.pos || first.angle;
@@ -866,7 +1180,7 @@
             const parent = currentLevel.object;
             const wrapper = new THREE.Group();
             parent.add(wrapper);
-            currentLevel.object = wrapper; 
+            currentLevel.object = wrapper;
             return wrapper;
         }
 
@@ -886,7 +1200,7 @@
 
         function addSkeletonHelper(group, color, size) {
             const axes = new THREE.AxesHelper(size);
-            const geom = new THREE.SphereGeometry(size/5, 4, 4);
+            const geom = new THREE.SphereGeometry(size / 5, 4, 4);
             const mat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
             const sphere = new THREE.Mesh(geom, mat);
             group.add(axes);
@@ -903,14 +1217,42 @@
         }
 
         function centerCamera() {
-            if(rootGroup.children.length === 0) return;
-            const box = new THREE.Box3().setFromObject(rootGroup);
-            if (box.isEmpty()) return;
+            if (rootGroup.children.length === 0) return;
+
+            const box = new THREE.Box3();
+            let hasVisible = false;
+
+            rootGroup.traverse(obj => {
+                if (obj.isMesh) {
+                    // Check if object and all ancestors (up to rootGroup) are visible
+                    let curr = obj;
+                    let visible = true;
+                    while (curr && curr !== scene) {
+                        if (!curr.visible) {
+                            visible = false;
+                            break;
+                        }
+                        curr = curr.parent;
+                    }
+
+                    if (visible) {
+                        obj.geometry.computeBoundingBox();
+                        const meshBox = new THREE.Box3().copy(obj.geometry.boundingBox).applyMatrix4(obj.matrixWorld);
+                        box.union(meshBox);
+                        hasVisible = true;
+                    }
+                }
+            });
+
+            if (!hasVisible || box.isEmpty()) return;
+
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
             controls.target.copy(center);
             const maxDim = Math.max(size.x, size.y, size.z);
-            camera.position.set(center.x + maxDim, center.y + maxDim*0.5, center.z + maxDim*1.5);
+            if (maxDim > 0) {
+                camera.position.set(center.x + maxDim, center.y + maxDim * 0.5, center.z + maxDim * 1.5);
+            }
             controls.update();
         }
 
@@ -942,8 +1284,9 @@
             }
             renderer.render(scene, camera);
         }
-        
+
         init();
     </script>
 </body>
+
 </html>
