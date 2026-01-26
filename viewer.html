@@ -546,7 +546,7 @@
     <div id="app-container">
         <!-- SIDEBAR -->
         <div id="sidebar" class="hidden-ui">
-            <h1>OBJ8 Inspector <button class="btn btn-danger" id="close-btn">Close</button></h1>
+            <h1>OBJ8 Inspector <button class="btn btn-danger" id="close-btn" name="close-btn">Close</button></h1>
 
             <div class="stat-row"><span>Files:</span> <span id="f-count" class="stat-val">0</span></div>
             <div class="stat-row"><span>Vertices:</span> <span id="v-count" class="stat-val">0</span></div>
@@ -561,8 +561,9 @@
 
             <h2>View</h2>
             <div class="stat-row">
-                <span>Mode:</span>
-                <select id="view-mode-select" class="btn" style="width: 150px; margin-top: 0; padding: 4px;">
+                <label for="view-mode-select">Mode:</label>
+                <select id="view-mode-select" name="view-mode-select" class="btn"
+                    style="width: 150px; margin-top: 0; padding: 4px;">
                     <option value="material">Material</option>
                     <option value="solid">Solid</option>
                     <option value="albedo">Albedo (Unlit)</option>
@@ -571,17 +572,20 @@
                     <option value="wireframe">Wireframe</option>
                 </select>
             </div>
-            <button class="btn" id="recenter-btn">Recenter Camera</button>
-            <label class="chk-label"><input type="checkbox" id="skeleton-chk"> Show Pivot Skeleton</label>
+            <button class="btn" id="recenter-btn" name="recenter-btn">Recenter Camera</button>
+            <label class="chk-label"><input type="checkbox" id="skeleton-chk" name="skeleton-chk"> Show Pivot
+                Skeleton</label>
             <!-- Shadows removed per request -->
 
             <h2>Material Defaults</h2>
-            <div class="stat-row"><span>Roughness</span><input type="range" id="mat-rough" min="0" max="1" step="0.05">
+            <div class="stat-row"><label for="mat-rough">Roughness</label><input type="range" id="mat-rough"
+                    name="mat-rough" min="0" max="1" step="0.05">
             </div>
-            <div class="stat-row"><span>Metalness</span><input type="range" id="mat-metal" min="0" max="1" step="0.05">
+            <div class="stat-row"><label for="mat-metal">Metalness</label><input type="range" id="mat-metal"
+                    name="mat-metal" min="0" max="1" step="0.05">
             </div>
-            <div class="stat-row"><span>Exposure</span><input type="range" id="cam-exposure" min="0.1" max="2"
-                    step="0.1">
+            <div class="stat-row"><label for="cam-exposure">Exposure</label><input type="range" id="cam-exposure"
+                    name="cam-exposure" min="0.1" max="2" step="0.1">
             </div>
         </div>
 
@@ -598,7 +602,8 @@
     <!-- FLOATING CONTROLS (Right) -->
     <div id="ui-right-container" class="hidden-ui">
         <div id="search-container">
-            <input type="text" id="dref-search" placeholder="Filter DataRefs..." autocomplete="off">
+            <input type="text" id="dref-search" name="dref-search" placeholder="Filter DataRefs..." autocomplete="off"
+                aria-label="Filter DataRefs">
             <span id="search-clear">✕</span>
         </div>
         <div id="gui-scroll-wrapper">
@@ -613,9 +618,10 @@
         <div class="drop-box" id="drop-target">
             <h2 style="color:#fff; margin-top:0;">X-Plane OBJ8 Viewer</h2>
             <p>Drag & Drop one or multiple .OBJ files</p>
-            <label class="btn" style="width: auto; display: inline-block; margin-top:15px;">
+            <label for="file-input" class="btn" style="width: auto; display: inline-block; margin-top:15px;">
                 Browse Files
-                <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp" multiple style="display:none">
+                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp" multiple
+                    style="display:none">
             </label>
         </div>
     </div>
@@ -1043,6 +1049,11 @@
                     parseOBJ8(text, file.name);
                 }
             }
+
+            // 3. Finalize UI and View
+            buildGUI();
+            updateStats();
+            centerCamera();
         }
 
         // --- PARSER ---
@@ -1185,10 +1196,6 @@
                     console.warn(`[OBJ8 Parser] Error in ${fileName} at line ${i + 1}: "${line}"`, e);
                 }
             }
-
-            buildGUI();
-            updateStats();
-            centerCamera();
         }
 
         // --- MESH GENERATION ---
@@ -1346,7 +1353,7 @@
 
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen();
 
-                // Add click-to-copy to the label
+                // Add click-to-copy and accessibility attributes
                 setTimeout(() => {
                     const label = ctrl.domElement.querySelector('.name');
                     if (label) {
@@ -1356,7 +1363,12 @@
                             showToast(`Copied: ${name}`);
                         });
                     }
-                }, 0);
+                    const inputs = ctrl.domElement.querySelectorAll('input, select');
+                    inputs.forEach((input, idx) => {
+                        if (!input.name) input.name = name + (idx > 0 ? '-' + idx : '');
+                        if (!input.id) input.id = 'gui-' + name.replace(/\W/g, '-') + (idx > 0 ? '-' + idx : '');
+                    });
+                }, 10);
 
                 guiControllers.push({ name: name, controller: ctrl });
             });
@@ -1563,9 +1575,11 @@
 
             // Calculate distance needed to fit the box
             const maxDim = Math.max(size.x, size.y, size.z);
+            if (isNaN(maxDim) || maxDim <= 0) return;
+
             const fov = camera.fov * (Math.PI / 180);
             let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraZ *= 1.5; // Add some padding
+            cameraZ = Math.max(cameraZ * 1.5, 0.5); // Add padding and ensure minimum distance
 
             // Move camera along its current view direction
             const direction = new THREE.Vector3();
