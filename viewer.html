@@ -342,6 +342,18 @@
             accent-color: var(--accent);
         }
 
+        #view-mode-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%234db8ff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.7rem top 50%;
+            background-size: 0.65rem auto;
+            text-align: left;
+            padding-left: 10px;
+        }
+
         /* --- SEARCH --- */
         #dref-search {
             width: 100%;
@@ -517,6 +529,15 @@
             </div>
 
             <h2>View</h2>
+            <div class="stat-row">
+                <span>Mode:</span>
+                <select id="view-mode-select" class="btn" style="width: 150px; margin-top: 0; padding: 4px;">
+                    <option value="material">Material</option>
+                    <option value="solid">Solid</option>
+                    <option value="albedo">Albedo (Unlit)</option>
+                    <option value="wireframe">Wireframe</option>
+                </select>
+            </div>
             <button class="btn" id="recenter-btn">Recenter Camera</button>
             <label class="chk-label"><input type="checkbox" id="skeleton-chk"> Show Pivot Skeleton</label>
             <!-- Shadows removed per request -->
@@ -598,6 +619,7 @@
 
         // Lights
         let headlight, hemiLight, mainLight, fillLight, backLight;
+        let currentViewMode = 'material';
 
         function init() {
             loadSettings();
@@ -690,6 +712,10 @@
                 document.getElementById('dref-search').value = '';
                 filterDataRefs({ target: { value: '' } });
             });
+            document.getElementById('view-mode-select').addEventListener('change', (e) => {
+                currentViewMode = e.target.value;
+                refreshMaterials();
+            });
             document.getElementById('close-selection')?.addEventListener('click', () => {
                 // Panel is gone, but keeping cleanup for safety
             });
@@ -769,7 +795,8 @@
             selectedMesh._oldMaterial = mesh.material;
             selectedMesh.material = mesh.material.clone();
             selectedMesh.material.emissive.setHex(0x0077ff); // Lit blue
-            selectedMesh.material.emissiveIntensity = 1.0;
+            selectedMesh.material.emissiveIntensity = 2.0;    // Boosted
+            selectedMesh.material.emissiveMap = null;         // Disable emissive map for highlight
             updateDataRefVisibility();
         }
 
@@ -842,6 +869,8 @@
                         // X-Plane OBJ8 uses standard UVs where 0,0 is bottom-left
                         // Three.js flipY=true (default) means 0 is bottom
                         tex.flipY = true;
+                        tex.wrapS = THREE.RepeatWrapping;
+                        tex.wrapT = THREE.RepeatWrapping;
                         loadedTextures.set(f.name.toLowerCase(), tex);
                         URL.revokeObjectURL(url);
                         resolve();
@@ -1031,6 +1060,8 @@
 
                 const mat = getMaterial(texName, litName);
                 const mesh = new THREE.Mesh(geo, mat);
+                mesh._textureName = texName;
+                mesh._litName = litName;
                 // Shadows removed
                 currentGroup().add(mesh);
             }
@@ -1220,51 +1251,93 @@
         function getMaterial(textureName, litName) {
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
-            const cacheKey = `${baseName}|${litBase}`;
+            const cacheKey = `${baseName}|${litBase}|${currentViewMode}`;
 
             if (!materialCache.has(cacheKey)) {
-                const mat = new THREE.MeshStandardMaterial({
-                    name: baseName,
-                    color: 0xbbbbbb, side: THREE.DoubleSide,
-                    roughness: 0.5, metalness: 0.2
-                });
-
-                const findTex = (name) => {
-                    if (!name || name === "default") return null;
-                    const low = name.toLowerCase();
-                    const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp"];
-                    for (const c of candidates) {
-                        if (loadedTextures.has(c)) return loadedTextures.get(c);
+                let mat;
+                if (currentViewMode === 'albedo') {
+                    mat = new THREE.MeshBasicMaterial({
+                        name: baseName,
+                        color: 0xffffff, side: THREE.DoubleSide
+                    });
+                } else {
+                    mat = new THREE.MeshStandardMaterial({
+                        name: baseName,
+                        color: 0xbbbbbb, side: THREE.DoubleSide,
+                        roughness: 0.5, metalness: 0.2
+                    });
+                    if (currentViewMode === 'wireframe') {
+                        mat.wireframe = true;
                     }
-                    // Try stripping extension if it has one
-                    const noExt = low.replace(/\.[^/.]+$/, "");
-                    if (noExt !== low) {
-                        const more = [noExt, noExt + ".png", noExt + ".jpg", noExt + ".jpeg", noExt + ".bmp"];
-                        for (const c of more) {
-                            if (loadedTextures.has(c)) return loadedTextures.get(c);
-                        }
-                    }
-                    return null;
-                };
-
-                const mainTex = findTex(baseName);
-                if (mainTex) {
-                    mat.map = mainTex;
-                    mat.color.set(0xffffff);
                 }
 
-                if (litBase) {
-                    const litTex = findTex(litBase);
-                    if (litTex) {
-                        mat.emissiveMap = litTex;
-                        mat.emissive.set(0xffffff);
-                        mat.emissiveIntensity = 1.0;
+                if (currentViewMode !== 'solid' && currentViewMode !== 'wireframe') {
+                    const findTex = (name) => {
+                        if (!name || name === "default") return null;
+                        const low = name.toLowerCase();
+                        const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp"];
+                        for (const c of candidates) {
+                            if (loadedTextures.has(c)) return loadedTextures.get(c);
+                        }
+                        // Try stripping extension if it has one
+                        const noExt = low.replace(/\.[^/.]+$/, "");
+                        if (noExt !== low) {
+                            const more = [noExt, noExt + ".png", noExt + ".jpg", noExt + ".jpeg", noExt + ".bmp"];
+                            for (const c of more) {
+                                if (loadedTextures.has(c)) return loadedTextures.get(c);
+                            }
+                        }
+                        return null;
+                    };
+
+                    const mainTex = findTex(baseName);
+                    if (mainTex) {
+                        mat.map = mainTex;
+                        mat.color.set(0xffffff);
                     }
+
+                    if (litBase && currentViewMode === 'material') {
+                        const litTex = findTex(litBase);
+                        if (litTex) {
+                            mat.emissiveMap = litTex;
+                            mat.emissive.set(0xffffff);
+                            mat.emissiveIntensity = 1.0;
+                        }
+                    }
+                } else if (currentViewMode === 'wireframe' || currentViewMode === 'solid') {
+                    mat.color.set(0x888888);
                 }
 
                 materialCache.set(cacheKey, mat);
             }
             return materialCache.get(cacheKey);
+        }
+
+        function refreshMaterials() {
+            // Need to clear material cache or at least re-evaluate for the new mode
+            // For simplicity, we'll re-assign materials to all meshes
+            rootGroup.traverse(obj => {
+                if (obj.isMesh) {
+                    // Check if it's currently selected, if so we need to handle its _oldMaterial
+                    if (selectedMesh === obj) {
+                        // Update the backup material
+                        const textureName = obj._textureName; // We need to store these
+                        const litName = obj._litName;
+                        obj._oldMaterial = getMaterial(textureName, litName);
+                        // Highlight material is separate, but we should probably refresh it too
+                        const highlight = obj._oldMaterial.clone();
+                        highlight.emissive.setHex(0x0077ff);
+                        highlight.emissiveIntensity = 2.0;
+                        highlight.emissiveMap = null;
+                        obj.material.dispose();
+                        obj.material = highlight;
+                    } else {
+                        const textureName = obj._textureName;
+                        const litName = obj._litName;
+                        obj.material = getMaterial(textureName, litName);
+                    }
+                }
+            });
         }
 
         function addSkeletonHelper(group, color, size) {
