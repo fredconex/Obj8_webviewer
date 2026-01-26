@@ -575,22 +575,13 @@
             <label class="chk-label"><input type="checkbox" id="skeleton-chk"> Show Pivot Skeleton</label>
             <!-- Shadows removed per request -->
 
-            <h2>Lighting</h2>
-            <!-- Lighting sliders (auto-saved) -->
-            <div class="stat-row"><span>Sun</span><input type="range" id="light-sun" min="0" max="2" step="0.1"></div>
-            <div class="stat-row"><span>Fill</span><input type="range" id="light-fill" min="0" max="2" step="0.1"></div>
-            <div class="stat-row"><span>Back</span><input type="range" id="light-back" min="0" max="2" step="0.1"></div>
-            <div class="stat-row"><span>Headlight</span><input type="range" id="light-head" min="0" max="2" step="0.1">
-            </div>
-            <div class="stat-row"><span>Ambience</span><input type="range" id="light-amb" min="0" max="2" step="0.1">
-            </div>
-            <div class="stat-row"><span>Rotation</span><input type="range" id="light-rot" min="0" max="360" step="1">
-            </div>
-
             <h2>Material Defaults</h2>
             <div class="stat-row"><span>Roughness</span><input type="range" id="mat-rough" min="0" max="1" step="0.05">
             </div>
             <div class="stat-row"><span>Metalness</span><input type="range" id="mat-metal" min="0" max="1" step="0.05">
+            </div>
+            <div class="stat-row"><span>Exposure</span><input type="range" id="cam-exposure" min="0.1" max="2"
+                    step="0.1">
             </div>
         </div>
 
@@ -663,12 +654,12 @@
 
         // Settings (Defaults)
         const settings = {
-            head: 0.8, sun: 1.5, fill: 0.6, back: 0.5, amb: 0.6,
-            rough: 0.5, metal: 0.2, lightRot: 0
+            exposure: 1.0,
+            rough: 0.5, metal: 0.2
         };
 
         // Lights
-        let headlight, hemiLight, mainLight, fillLight, backLight;
+        let headlight, ambientLight, mainLight;
         let currentViewMode = 'material';
 
         function init() {
@@ -685,10 +676,8 @@
             renderer.setSize(viewport.clientWidth, viewport.clientHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.outputColorSpace = THREE.SRGBColorSpace;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.0;
-            // Shadows disabled
-            renderer.shadowMap.enabled = false;
+            renderer.toneMapping = THREE.AgXToneMapping;
+            renderer.toneMappingExposure = settings.exposure;
             viewport.appendChild(renderer.domElement);
 
             // Raycaster for Selection
@@ -698,7 +687,7 @@
             // PBR Environment
             pmremGenerator = new THREE.PMREMGenerator(renderer);
             scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-            scene.environmentIntensity = 1.2; // Boost reflections
+            scene.environmentIntensity = 0.5; // Balanced reflections
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -716,30 +705,20 @@
             scene.add(grid);
             scene.add(new THREE.AxesHelper(1));
 
-            // Lighting Group (Rotatable)
-            lightGroup = new THREE.Group();
-            scene.add(lightGroup);
+            // Improved Studio Lighting Setup
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
 
-            // Lighting (4-Point) - No Shadows
-            hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, settings.amb);
-            scene.add(hemiLight);
+            // Main Sun Light (Fixed)
+            mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(10, 20, 10);
+            scene.add(mainLight);
 
-            mainLight = new THREE.DirectionalLight(0xffffff, settings.sun);
-            mainLight.position.set(5, 10, 5);
-            lightGroup.add(mainLight);
-
-            fillLight = new THREE.DirectionalLight(0xaaccff, settings.fill);
-            fillLight.position.set(-5, 2, -5);
-            lightGroup.add(fillLight);
-
-            backLight = new THREE.DirectionalLight(0xffffff, settings.back);
-            backLight.position.set(0, 5, -10);
-            lightGroup.add(backLight);
-
-            lightGroup.rotation.y = settings.lightRot * (Math.PI / 180);
-
-            headlight = new THREE.PointLight(0xffffff, settings.head, 100);
+            // Camera Headlight (Soft Fill that follows camera)
+            headlight = new THREE.DirectionalLight(0xffffff, 0.5);
             camera.add(headlight);
+            // Position it slightly offset from camera center for better depth
+            headlight.position.set(1, 1, 1);
 
             // GUI
             const guiContainer = document.getElementById('gui-scroll-wrapper');
@@ -797,25 +776,18 @@
 
         function setupDOMControls() {
             const setVal = (id, val) => document.getElementById(id).value = val;
-            setVal('light-head', settings.head);
-            setVal('light-sun', settings.sun);
-            setVal('light-fill', settings.fill);
-            setVal('light-back', settings.back);
-            setVal('light-amb', settings.amb);
-            setVal('light-rot', settings.lightRot);
             setVal('mat-rough', settings.rough);
             setVal('mat-metal', settings.metal);
+            setVal('cam-exposure', settings.exposure);
 
-            const bind = (id, fn) => document.getElementById(id).addEventListener('input', (e) => { fn(e); saveSettings(); });
+            const bind = (id, fn) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', (e) => { fn(e); saveSettings(); });
+            };
 
-            bind('light-head', e => { settings.head = parseFloat(e.target.value); headlight.intensity = settings.head; });
-            bind('light-sun', e => { settings.sun = parseFloat(e.target.value); mainLight.intensity = settings.sun; });
-            bind('light-fill', e => { settings.fill = parseFloat(e.target.value); fillLight.intensity = settings.fill; });
-            bind('light-back', e => { settings.back = parseFloat(e.target.value); backLight.intensity = settings.back; });
-            bind('light-amb', e => { settings.amb = parseFloat(e.target.value); hemiLight.intensity = settings.amb; });
-            bind('light-rot', e => { settings.lightRot = parseFloat(e.target.value); lightGroup.rotation.y = settings.lightRot * (Math.PI / 180); });
             bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); refreshMaterials(); });
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
+            bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
 
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
