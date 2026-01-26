@@ -762,8 +762,8 @@
             scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
             scene.environmentIntensity = settings.envIntensity;
 
-            // Load default HDRI
-            loadHDRI('https://unpkg.com/three@0.172.0/examples/textures/equirectangular/royal_esplanade_1k.hdr');
+            // Default HDRI loading removed to avoid CORS/404 errors.
+            // Users can still drop their own .hdr files.
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -786,15 +786,24 @@
             ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
             scene.add(ambientLight);
 
-            // Main Sun Light (Fixed)
-            mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            // Key Light (Main Sun)
+            mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
             mainLight.position.set(10, 20, 10);
             scene.add(mainLight);
 
+            // Fill Light
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            fillLight.position.set(-10, 10, 10);
+            scene.add(fillLight);
+
+            // Rim Light (Separation from background)
+            const rimLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            rimLight.position.set(0, 5, -10);
+            scene.add(rimLight);
+
             // Camera Headlight (Soft Fill that follows camera)
-            headlight = new THREE.DirectionalLight(0xffffff, 0.5);
+            headlight = new THREE.DirectionalLight(0xffffff, 0.3);
             camera.add(headlight);
-            // Position it slightly offset from camera center for better depth
             headlight.position.set(1, 1, 1);
 
             // GUI
@@ -1634,43 +1643,40 @@
                     return null;
                 };
 
-                // Apply Textures based on mode
-                if (currentViewMode === 'material') {
-                    const tex = findTex(baseName);
-                    if (tex) { mat.map = tex; mat.color.set(0xffffff); }
+                // Shared Material Logic for Material, Solid, and Wireframe
+                if (currentViewMode === 'material' || currentViewMode === 'solid' || currentViewMode === 'wireframe') {
+                    // 1. Albedo & Lit (Only in material mode)
+                    if (currentViewMode === 'material') {
+                        const tex = findTex(baseName);
+                        if (tex) { mat.map = tex; mat.color.set(0xffffff); }
 
-                    const ltex = findTex(litBase);
-                    if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1.0; }
-
-                    // Robust base name for auto-detecting NRM/MAT
-                    // If baseName is "something_ALB.png", root is "something"
-                    let rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
-
-                    let ntex = findTex(normBase);
-                    if (!ntex) {
-                        ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
+                        const ltex = findTex(litBase);
+                        if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1.0; }
+                    } else {
+                        mat.color.set(0x888888);
                     }
+
+                    // 2. Normals (Available in Solid and Material)
+                    let rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
+                    let ntex = findTex(normBase);
+                    if (!ntex) ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
                     if (ntex) { mat.normalMap = ntex; mat.normalScale.set(1, 1); }
 
+                    // 3. PBR Maps (MAT)
                     const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
                     if (mtex) {
-                        mtex.channel = 0; // Use uv1 for AO map
+                        mtex.channel = 0;
                         mat.roughnessMap = mtex;
                         mat.metalnessMap = mtex;
                         mat.aoMap = mtex;
                         mat.roughness = 1.0;
                         mat.metalness = 1.0;
 
-                        // Fix channel mapping: X-Plane [R:Metal, G:Rough, B:AO] -> Three.js [R:AO, G:Rough, B:Metal]
                         mat.onBeforeCompile = (shader) => {
-                            // Metalness: Three.js uses .b, X-Plane uses .r
                             shader.fragmentShader = shader.fragmentShader.replace(
                                 'metalnessFactor *= texelMetalness.b;',
                                 'metalnessFactor *= texelMetalness.r;'
                             );
-                            // AO: Three.js uses .r, X-Plane uses .b
-                            // AO snippet in StandardMaterial usually looks like:
-                            // ambientOcclusion = ( texture2D( aoMap, vAoMapUv ).r - 1.0 ) * aoMapIntensity + 1.0;
                             shader.fragmentShader = shader.fragmentShader.replace(
                                 'texture2D( aoMap, vAoMapUv ).r',
                                 'texture2D( aoMap, vAoMapUv ).b'
@@ -1683,8 +1689,6 @@
                 } else if (currentViewMode === 'lit_only') {
                     const ltex = findTex(litBase);
                     if (ltex) mat.map = ltex; else mat.color.set(0x000000);
-                } else if (currentViewMode === 'solid' || currentViewMode === 'wireframe') {
-                    mat.color.set(0x888888);
                 }
 
                 materialCache.set(cacheKey, mat);
