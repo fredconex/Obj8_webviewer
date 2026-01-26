@@ -631,6 +631,11 @@
             setupDOMControls();
 
             window.addEventListener('resize', onResize);
+            window.addEventListener('keydown', e => {
+                if (e.key.toLowerCase() === 'f' && document.activeElement.tagName !== 'INPUT') {
+                    centerCamera();
+                }
+            });
             // Click listener for selection
             viewport.addEventListener('dblclick', onDoubleClick);
 
