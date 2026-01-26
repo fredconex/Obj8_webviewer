@@ -1050,7 +1050,7 @@
             solo.textContent = 'S';
             solo.title = 'Solo Object';
 
-            const objRecord = { name, group, visible: true, div, eye, solo };
+            const objRecord = { name, group, visible: true, div, eye, solo, datarefs: new Set() };
             loadedObjects.push(objRecord);
 
             // Toggle Visibility
@@ -1060,6 +1060,7 @@
                 objRecord.visible = !objRecord.visible;
                 group.visible = objRecord.visible;
                 eye.classList.toggle('hidden', !objRecord.visible);
+                updateDataRefVisibility();
             };
 
             // Solo Mode
@@ -1091,6 +1092,7 @@
                             o.div.style.opacity = '0.5';
                         }
                     });
+                    updateDataRefVisibility();
                 }
             };
 
@@ -1116,6 +1118,11 @@
         // --- DATAREFS ---
         function registerDataRef(name, ...values) {
             if (!name) return;
+            // Record in the most recently added object (the one currently being parsed)
+            if (loadedObjects.length > 0) {
+                loadedObjects[loadedObjects.length - 1].datarefs.add(name);
+            }
+
             let entry = datarefRanges.get(name);
             if (!entry) { entry = { min: Infinity, max: -Infinity }; datarefRanges.set(name, entry); }
             values.forEach(v => {
@@ -1283,10 +1290,23 @@
         }
 
         function filterDataRefs(e) {
-            const term = (e.target && e.target.value !== undefined ? e.target.value : e).toLowerCase();
+            updateDataRefVisibility();
+        }
+
+        function updateDataRefVisibility() {
+            const term = document.getElementById('dref-search').value.toLowerCase();
+
+            // Determine the union of all DataRefs used by currently visible objects
+            const activeDatarefs = new Set();
+            loadedObjects.forEach(obj => {
+                if (obj.group.visible) {
+                    obj.datarefs.forEach(d => activeDatarefs.add(d));
+                }
+            });
+
             guiControllers.forEach(item => {
                 if (item.controller && item.controller.domElement) {
-                    const isVisible = item.name.toLowerCase().includes(term);
+                    const isVisible = item.name.toLowerCase().includes(term) && activeDatarefs.has(item.name);
                     item.controller.domElement.style.display = isVisible ? '' : 'none';
                 }
             });
