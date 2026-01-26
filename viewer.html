@@ -420,6 +420,7 @@
             --text-color: #ddd;
             --widget-color: #333;
             --hover-color: #444;
+            --name-width: 50%;
         }
 
         .lil-gui .title {
@@ -428,6 +429,13 @@
 
         .lil-gui .widget {
             height: 24px;
+        }
+
+        .lil-gui .name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 5px;
         }
     </style>
 
@@ -624,7 +632,7 @@
 
             window.addEventListener('resize', onResize);
             // Click listener for selection
-            viewport.addEventListener('pointerdown', onPointerDown);
+            viewport.addEventListener('dblclick', onDoubleClick);
 
             // File Handling
             const drop = document.getElementById('drop-target');
@@ -673,7 +681,7 @@
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
         }
 
-        function onPointerDown(event) {
+        function onDoubleClick(event) {
             if (event.button !== 0) return; // Left click only
             // Calculate mouse position in normalized device coordinates
             const rect = renderer.domElement.getBoundingClientRect();
@@ -773,11 +781,12 @@
                     labelDiv.className = 'control-label';
                     labelDiv.innerHTML = `<span>${dref}</span> <span class="control-val">${currentVal.toFixed(2)}</span>`;
 
+                    const margin = (max - min) * 0.05; // 10% total (5% each side)
                     const slider = document.createElement('input');
                     slider.type = 'range';
-                    slider.min = min - (max - min) * 0.1; // Add little padding
-                    slider.max = max + (max - min) * 0.1;
-                    slider.step = (max - min) / 100;
+                    slider.min = min - margin;
+                    slider.max = max + margin;
+                    slider.step = (max - min) === 0 ? 0.01 : (max - min) / 100;
                     slider.value = currentVal;
 
                     slider.addEventListener('input', (e) => {
@@ -983,7 +992,9 @@
                             animationControllers.push({ type: cmd === 'ANIM_hide' ? 'hide' : 'show', target: wrapper, dref: dref, min: v1, max: v2 });
                         }
                     }
-                } catch (e) { }
+                } catch (e) {
+                    console.warn(`[OBJ8 Parser] Error in ${fileName} at line ${i + 1}: "${line}"`, e);
+                }
             }
 
             buildGUI();
@@ -1114,6 +1125,8 @@
         }
 
         function buildGUI() {
+            // Instead of destroying everything, we rebuild the list properly
+            // Clear existing UI references but keep guiData for state persistence
             gui.folders.forEach(f => f.destroy());
             gui.controllers.forEach(c => c.destroy());
             guiControllers = [];
@@ -1124,7 +1137,7 @@
                 let min = range.min, max = range.max;
                 let span = max - min;
                 if (span === 0) span = 1;
-                const margin = span * 0.10;
+                const margin = span * 0.05; // 10% total (5% each side)
                 min -= margin; max += margin;
 
                 // Set default to 0 if valid, otherwise min
@@ -1132,18 +1145,13 @@
                     guiData[name] = (0 >= min && 0 <= max) ? 0 : range.min;
                 }
 
-                // Add sync listener to update floating selection panel if it's open
-                const ctrl = gui.add(guiData, name, min, max).name(name).listen().onChange((val) => {
-                    // If the floating panel is open and has this input, update it
-                    const panel = document.getElementById('selection-controls');
-                    // This is a bit brute-force for the UI sync but works:
-                    // The sliders in the floating panel are manual inputs.
-                    // We don't have direct references to them here, but they read guiData on their own input.
-                });
+                const ctrl = gui.add(guiData, name, min, max).name(name).listen();
                 guiControllers.push({ name: name, controller: ctrl });
             });
+
+            // Re-apply filter immediately after rebuild
             const searchVal = document.getElementById('dref-search').value;
-            if (searchVal) filterDataRefs({ target: { value: searchVal } });
+            filterDataRefs({ target: { value: searchVal } });
         }
 
         function interpolate(val, keys) {
@@ -1220,39 +1228,57 @@
             if (rootGroup.children.length === 0) return;
 
             const box = new THREE.Box3();
-            let hasVisible = false;
+            let hasBounds = false;
 
-            rootGroup.traverse(obj => {
-                if (obj.isMesh) {
-                    // Check if object and all ancestors (up to rootGroup) are visible
-                    let curr = obj;
-                    let visible = true;
-                    while (curr && curr !== scene) {
-                        if (!curr.visible) {
-                            visible = false;
-                            break;
+            if (selectedMesh) {
+                // Center on selection
+                selectedMesh.geometry.computeBoundingBox();
+                box.copy(selectedMesh.geometry.boundingBox).applyMatrix4(selectedMesh.matrixWorld);
+                hasBounds = true;
+            } else {
+                // Center on all visible meshes
+                rootGroup.traverse(obj => {
+                    if (obj.isMesh) {
+                        // Check if object and all ancestors (up to rootGroup) are visible
+                        let curr = obj;
+                        let visible = true;
+                        while (curr && curr !== scene) {
+                            if (!curr.visible) {
+                                visible = false;
+                                break;
+                            }
+                            curr = curr.parent;
                         }
-                        curr = curr.parent;
-                    }
 
-                    if (visible) {
-                        obj.geometry.computeBoundingBox();
-                        const meshBox = new THREE.Box3().copy(obj.geometry.boundingBox).applyMatrix4(obj.matrixWorld);
-                        box.union(meshBox);
-                        hasVisible = true;
+                        if (visible) {
+                            obj.geometry.computeBoundingBox();
+                            const meshBox = new THREE.Box3().copy(obj.geometry.boundingBox).applyMatrix4(obj.matrixWorld);
+                            box.union(meshBox);
+                            hasBounds = true;
+                        }
                     }
-                }
-            });
+                });
+            }
 
-            if (!hasVisible || box.isEmpty()) return;
+            if (!hasBounds || box.isEmpty()) return;
 
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
-            controls.target.copy(center);
+
+            // Calculate distance needed to fit the box
             const maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) {
-                camera.position.set(center.x + maxDim, center.y + maxDim * 0.5, center.z + maxDim * 1.5);
-            }
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            cameraZ *= 1.5; // Add some padding
+
+            // Move camera along its current view direction
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+
+            const newPos = center.clone().add(direction.multiplyScalar(-cameraZ));
+            camera.position.copy(newPos);
+
+            controls.target.copy(center);
             controls.update();
         }
 
