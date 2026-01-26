@@ -883,7 +883,8 @@
 
             raycaster.setFromCamera(mouse, camera);
 
-            const intersects = raycaster.intersectObjects(rootGroup.children, true);
+            // Filter out selection helpers from raycasting
+            const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => !i.object._isSelectionHelper);
 
             if (intersects.length > 0) {
                 const hit = intersects.find(i => {
@@ -917,7 +918,7 @@
             } else {
                 const idx = selectedMeshes.indexOf(mesh);
                 if (idx > -1) {
-                    restoreMeshMaterial(mesh);
+                    removeHighlight(mesh);
                     selectedMeshes.splice(idx, 1);
                     updateDataRefVisibility();
                     return;
@@ -925,29 +926,46 @@
                 selectedMeshes.push(mesh);
             }
 
-            highlightMesh(mesh);
+            addHighlight(mesh);
             updateDataRefVisibility();
         }
 
-        function highlightMesh(mesh) {
-            if (mesh._oldMaterial) return;
-            mesh._oldMaterial = mesh.material;
-            mesh.material = mesh.material.clone();
-            mesh.material.emissive.setHex(0x0077ff);
-            mesh.material.emissiveIntensity = 2.0;
-            mesh.material.emissiveMap = null;
+        function addHighlight(mesh) {
+            if (mesh._selectionHelper) return;
+
+            // Create an overlay highlight that works in all modes
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0x4db8ff,
+                transparent: true,
+                opacity: 0.4,
+                side: THREE.DoubleSide,
+                depthTest: true,
+                polygonOffset: true,
+                polygonOffsetFactor: -4,
+                polygonOffsetUnits: -4
+            });
+
+            const helper = new THREE.Mesh(mesh.geometry, mat);
+            helper._isSelectionHelper = true;
+            mesh.add(helper);
+            mesh._selectionHelper = helper;
         }
 
-        function restoreMeshMaterial(mesh) {
-            if (mesh._oldMaterial) {
-                mesh.material.dispose();
-                mesh.material = mesh._oldMaterial;
-                mesh._oldMaterial = null;
+        function removeHighlight(mesh) {
+            if (mesh._selectionHelper) {
+                mesh.remove(mesh._selectionHelper);
+                if (mesh._selectionHelper.geometry && mesh._selectionHelper.geometry !== mesh.geometry) {
+                    mesh._selectionHelper.geometry.dispose();
+                }
+                if (mesh._selectionHelper.material) {
+                    mesh._selectionHelper.material.dispose();
+                }
+                mesh._selectionHelper = null;
             }
         }
 
         function deselectMesh() {
-            selectedMeshes.forEach(m => restoreMeshMaterial(m));
+            selectedMeshes.forEach(m => removeHighlight(m));
             selectedMeshes = [];
             updateDataRefVisibility();
         }
@@ -968,7 +986,8 @@
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
 
-            const intersects = raycaster.intersectObjects(rootGroup.children, true);
+            // Filter out selection helpers
+            const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => !i.object._isSelectionHelper);
             const hit = intersects.find(i => {
                 if (i.object.type !== 'Mesh') return false;
                 let curr = i.object;
@@ -1564,20 +1583,9 @@
 
         function refreshMaterials() {
             rootGroup.traverse(obj => {
-                if (obj.isMesh) {
+                if (obj.isMesh && !obj._isSelectionHelper) {
                     const t = obj._textureName, l = obj._litName, n = obj._normalName;
-                    if (selectedMeshes.includes(obj)) {
-                        obj._oldMaterial = getMaterial(t, l, n);
-                        const highlight = obj._oldMaterial.clone();
-                        highlight.emissive.setHex(0x0077ff);
-                        highlight.emissiveIntensity = 2.0;
-                        highlight.emissiveMap = null;
-                        if (obj.material && obj.material.dispose) obj.material.dispose();
-                        obj.material = highlight;
-                    } else {
-                        obj.material = getMaterial(t, l, n);
-                        obj._oldMaterial = null;
-                    }
+                    obj.material = getMaterial(t, l, n);
                 }
             });
         }
@@ -1601,7 +1609,7 @@
                 // Stats for specific object/group
                 fCount = 1;
                 group.traverse(obj => {
-                    if (obj.isMesh) {
+                    if (obj.isMesh && !obj._isSelectionHelper) {
                         vCount += obj.geometry.attributes.position.count;
                         if (obj.geometry.index) {
                             tCount += obj.geometry.index.count / 3;
@@ -1620,7 +1628,7 @@
             } else {
                 // Global stats
                 rootGroup.traverse(obj => {
-                    if (obj.isMesh) {
+                    if (obj.isMesh && !obj._isSelectionHelper) {
                         vCount += obj.geometry.attributes.position.count;
                         if (obj.geometry.index) {
                             tCount += obj.geometry.index.count / 3;
