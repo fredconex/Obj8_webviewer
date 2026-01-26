@@ -556,7 +556,7 @@
             <p>Drag & Drop one or multiple .OBJ files</p>
             <label class="btn" style="width: auto; display: inline-block; margin-top:15px;">
                 Browse Files
-                <input type="file" id="file-input" accept=".obj" multiple style="display:none">
+                <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp" multiple style="display:none">
             </label>
         </div>
     </div>
@@ -821,19 +821,46 @@
         }
         function handleFile(e) { if (e.target.files.length) processFiles(e.target.files); }
 
-        function processFiles(files) {
+        async function processFiles(files) {
             if (filesLoadedCount === 0) {
                 document.getElementById('upload-overlay').classList.add('hidden');
                 document.getElementById('sidebar').classList.remove('hidden-ui');
                 document.getElementById('ui-right-container').classList.remove('hidden-ui');
             }
-            Array.from(files).forEach(file => {
-                if (file.name.toLowerCase().endsWith('.obj')) {
-                    const reader = new FileReader();
-                    reader.onload = e => parseOBJ8(e.target.result, file.name);
-                    reader.readAsText(file);
-                }
+
+            const fileList = Array.from(files);
+            const texLoader = new THREE.TextureLoader();
+
+            // 1. Identify and load images first
+            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp)$/i.test(f.name));
+            const texPromises = imgFiles.map(f => {
+                return new Promise((resolve) => {
+                    const url = URL.createObjectURL(f);
+                    texLoader.load(url, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        tex.name = f.name.toLowerCase();
+                        // X-Plane OBJ8 uses standard UVs where 0,0 is bottom-left
+                        // Three.js flipY=true (default) means 0 is bottom
+                        tex.flipY = true;
+                        loadedTextures.set(f.name.toLowerCase(), tex);
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    }, undefined, () => {
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    });
+                });
             });
+
+            await Promise.all(texPromises);
+
+            // 2. Process OBJs
+            for (const file of fileList) {
+                if (file.name.toLowerCase().endsWith('.obj')) {
+                    const text = await file.text();
+                    parseOBJ8(text, file.name);
+                }
+            }
         }
 
         // --- PARSER ---
@@ -851,10 +878,13 @@
             const lines = text.split(/\r?\n/);
 
             let currentTexture = "default";
-            // Pre-scan texture
-            for (let i = 0; i < Math.min(lines.length, 50); i++) {
-                const parts = lines[i].trim().split(/\s+/);
-                if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; break; }
+            let litTexture = null;
+            // Pre-scan texture(s)
+            for (let i = 0; i < Math.min(lines.length, 100); i++) {
+                const l = lines[i].split('#')[0].trim();
+                const parts = l.split(/\s+/);
+                if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; }
+                if (parts[0] === 'TEXTURE_LIT') { litTexture = parts[1]; }
             }
 
             const groupStack = [{ object: fileGroup }];
@@ -880,7 +910,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture);
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -978,7 +1008,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -999,7 +1029,7 @@
                 geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
                 geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
 
-                const mat = getMaterial(texName);
+                const mat = getMaterial(texName, litName);
                 const mesh = new THREE.Mesh(geo, mat);
                 // Shadows removed
                 currentGroup().add(mesh);
@@ -1187,18 +1217,54 @@
             return wrapper;
         }
 
-        function getMaterial(textureName) {
-            // Logic exists, but texture UI is hidden
-            const simpleName = textureName.split(/[/\\]/).pop();
-            if (!materialCache.has(simpleName)) {
+        function getMaterial(textureName, litName) {
+            const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
+            const litBase = litName ? litName.split(/[/\\]/).pop() : null;
+            const cacheKey = `${baseName}|${litBase}`;
+
+            if (!materialCache.has(cacheKey)) {
                 const mat = new THREE.MeshStandardMaterial({
-                    name: simpleName,
+                    name: baseName,
                     color: 0xbbbbbb, side: THREE.DoubleSide,
                     roughness: 0.5, metalness: 0.2
                 });
-                materialCache.set(simpleName, mat);
+
+                const findTex = (name) => {
+                    if (!name || name === "default") return null;
+                    const low = name.toLowerCase();
+                    const candidates = [low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp"];
+                    for (const c of candidates) {
+                        if (loadedTextures.has(c)) return loadedTextures.get(c);
+                    }
+                    // Try stripping extension if it has one
+                    const noExt = low.replace(/\.[^/.]+$/, "");
+                    if (noExt !== low) {
+                        const more = [noExt, noExt + ".png", noExt + ".jpg", noExt + ".jpeg", noExt + ".bmp"];
+                        for (const c of more) {
+                            if (loadedTextures.has(c)) return loadedTextures.get(c);
+                        }
+                    }
+                    return null;
+                };
+
+                const mainTex = findTex(baseName);
+                if (mainTex) {
+                    mat.map = mainTex;
+                    mat.color.set(0xffffff);
+                }
+
+                if (litBase) {
+                    const litTex = findTex(litBase);
+                    if (litTex) {
+                        mat.emissiveMap = litTex;
+                        mat.emissive.set(0xffffff);
+                        mat.emissiveIntensity = 1.0;
+                    }
+                }
+
+                materialCache.set(cacheKey, mat);
             }
-            return materialCache.get(simpleName);
+            return materialCache.get(cacheKey);
         }
 
         function addSkeletonHelper(group, color, size) {
