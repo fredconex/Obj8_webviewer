@@ -645,6 +645,13 @@
             <div class="stat-row"><label for="cam-exposure">Exposure</label><input type="range" id="cam-exposure"
                     name="cam-exposure" min="0.1" max="2" step="0.1">
             </div>
+
+            <h2>Environment</h2>
+            <div class="stat-row">
+                <label for="env-intensity">Intensity</label>
+                <input type="range" id="env-intensity" name="env-intensity" min="0" max="2" step="0.1">
+            </div>
+            <label class="chk-label"><input type="checkbox" id="env-bg-chk" name="env-bg-chk"> Show Background</label>
         </div>
 
         <!-- MAIN 3D VIEWPORT -->
@@ -678,7 +685,7 @@
             <p>Drag & Drop one or multiple .OBJ files</p>
             <label for="file-input" class="btn" style="width: auto; display: inline-block; margin-top:15px;">
                 Browse Files
-                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp" multiple
+                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr" multiple
                     style="display:none">
             </label>
         </div>
@@ -688,6 +695,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
         import GUI from 'lil-gui';
 
         // --- GLOBALS ---
@@ -718,7 +726,9 @@
         // Settings (Defaults)
         const settings = {
             exposure: 1.0,
-            rough: 0.5, metal: 0.2
+            rough: 0.5, metal: 0.2,
+            envIntensity: 0.8,
+            showBackground: true
         };
 
         // Lights
@@ -747,10 +757,13 @@
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
-            // PBR Environment
+            // PBR Environment (Default fallback)
             pmremGenerator = new THREE.PMREMGenerator(renderer);
             scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-            scene.environmentIntensity = 0.5; // Balanced reflections
+            scene.environmentIntensity = settings.envIntensity;
+
+            // Load default HDRI
+            loadHDRI('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/royal_esplanade_1k.hdr');
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -851,6 +864,7 @@
             setVal('mat-rough', settings.rough);
             setVal('mat-metal', settings.metal);
             setVal('cam-exposure', settings.exposure);
+            setVal('env-intensity', settings.envIntensity);
 
             const bind = (id, fn) => {
                 const el = document.getElementById(id);
@@ -860,12 +874,45 @@
             bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); refreshMaterials(); });
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
+            bind('env-intensity', e => { settings.envIntensity = parseFloat(e.target.value); scene.environmentIntensity = settings.envIntensity; });
+
+            document.getElementById('env-bg-chk').checked = settings.showBackground;
+            document.getElementById('env-bg-chk').addEventListener('change', e => {
+                settings.showBackground = e.target.checked;
+                updateBackground();
+                saveSettings();
+            });
 
             document.getElementById('grid-chk').addEventListener('change', e => {
                 worldGrid.visible = e.target.checked;
                 worldAxes.visible = e.target.checked;
             });
             document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
+        }
+
+        function updateBackground() {
+            if (settings.showBackground && scene.environment) {
+                scene.background = scene.environment;
+            } else {
+                scene.background = new THREE.Color(0x121212);
+            }
+        }
+
+        function loadHDRI(url) {
+            return new Promise((resolve, reject) => {
+                new RGBELoader()
+                    .load(url, function (texture) {
+                        texture.mapping = THREE.EquirectangularReflectionMapping;
+                        if (scene.environment && scene.environment.dispose) scene.environment.dispose();
+                        scene.environment = texture;
+                        scene.environmentIntensity = settings.envIntensity;
+                        updateBackground();
+                        resolve(texture);
+                    }, undefined, (err) => {
+                        console.error("Error loading HDRI:", err);
+                        reject(err);
+                    });
+            });
         }
 
         function onClick(event) {
@@ -1104,6 +1151,14 @@
 
             const fileList = Array.from(files);
             const texLoader = new THREE.TextureLoader();
+
+            // 0. Process HDRs
+            const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
+            for (const f of hdrFiles) {
+                const url = URL.createObjectURL(f);
+                await loadHDRI(url);
+                URL.revokeObjectURL(url);
+            }
 
             // 1. Identify and load images first
             const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp)$/i.test(f.name));
