@@ -1732,6 +1732,12 @@
             [...gui.controllers].forEach(c => c.destroy());
             guiControllers = [];
 
+            // Calculate Usage Counts
+            const drefCounts = {};
+            animationControllers.forEach(c => {
+                if (c.dref) drefCounts[c.dref] = (drefCounts[c.dref] || 0) + 1;
+            });
+
             const sortedKeys = Array.from(datarefRanges.keys()).sort();
             sortedKeys.forEach(name => {
                 const range = datarefRanges.get(name);
@@ -1869,7 +1875,7 @@
                     });
                 }, 10);
 
-                guiControllers.push({ name: name, controller: ctrl });
+                guiControllers.push({ name: name, controller: ctrl, count: (drefCounts[name] || 0) });
             });
 
             // Re-apply filter immediately after rebuild
@@ -2233,12 +2239,40 @@
                 });
             }
 
+            // Separate active and inactive items for sorting
+            const activeItems = [];
+            const inactiveItems = [];
+
             guiControllers.forEach(item => {
-                if (item.controller && item.controller.domElement) {
-                    const isVisible = item.name.toLowerCase().includes(term) && activeDatarefs.has(item.name);
-                    item.controller.domElement.style.display = isVisible ? '' : 'none';
+                const isMatch = item.name.toLowerCase().includes(term);
+                const isActive = activeDatarefs.has(item.name);
+                const isVisible = isMatch && isActive;
+
+                if (isVisible) {
+                    item.controller.domElement.style.display = '';
+                    activeItems.push(item);
+                } else {
+                    item.controller.domElement.style.display = 'none';
+                    inactiveItems.push(item);
                 }
             });
+
+            // Sort active items: Least usage first, then alphabetical
+            activeItems.sort((a, b) => {
+                if (a.count !== b.count) return a.count - b.count;
+                return a.name.localeCompare(b.name);
+            });
+
+            // Re-order DOM
+            if (guiControllers.length > 0) {
+                const container = guiControllers[0].controller.domElement.parentElement;
+                if (container) {
+                    // Append active ones in order
+                    activeItems.forEach(item => container.appendChild(item.controller.domElement));
+                    // Append inactive ones (keeps them in the DOM but hidden)
+                    inactiveItems.forEach(item => container.appendChild(item.controller.domElement));
+                }
+            }
         }
 
         function showToast(msg) {
