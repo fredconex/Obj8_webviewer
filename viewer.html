@@ -274,11 +274,11 @@
         }
 
         .eye-btn.hidden {
-            color: #444;
+            color: #666;
         }
 
         .eye-btn:not(.hidden) {
-            color: var(--accent);
+            color: #fff;
         }
 
         .solo-btn {
@@ -640,7 +640,7 @@
         }
 
         .stat-line .val {
-            color: #ddd;
+            color: inherit;
             margin-left: 8px;
         }
 
@@ -799,6 +799,17 @@
                 <div class="stat-line">Objects: <span id="o-count" class="val">0 / 0</span></div>
                 <div class="stat-line">DataRefs: <span id="d-count" class="val">0</span></div>
                 <div class="stat-line">Anims: <span id="a-count" class="val">0</span></div>
+            </div>
+            <!-- VIEWPORT ACTIONS -->
+            <div style="position: absolute; bottom: 20px; left: 20px; z-index: 100; display: flex; gap: 8px;">
+                <button id="hide-sel-btn" class="icon-btn-tool" style="width: 40px; height: 40px;"
+                    title="Hide Selected (H)">
+                    <span class="material-symbols-outlined">visibility_off</span>
+                </button>
+                <button id="unhide-all-btn" class="icon-btn-tool" style="width: 40px; height: 40px;"
+                    title="Unhide All (Shift+H)">
+                    <span class="material-symbols-outlined">visibility</span>
+                </button>
             </div>
         </div>
     </div>
@@ -983,6 +994,8 @@
 
             // Button Logic
             document.getElementById('recenter-btn').addEventListener('click', centerCamera);
+            document.getElementById('hide-sel-btn').addEventListener('click', hideSelectedMesh);
+            document.getElementById('unhide-all-btn').addEventListener('click', unhideAllMeshes);
             document.getElementById('clear-btn').addEventListener('click', resetViewer);
             document.getElementById('import-input').addEventListener('change', handleFile);
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
@@ -1212,20 +1225,14 @@
             }
         }
 
-        function unhideAllMeshes() {
+        function updateVisibility() {
             const showSkeleton = document.getElementById('toggle-skeleton-btn').classList.contains('active');
             const isSoloActive = soloObjects.size > 0;
 
-            rootGroup.traverse(obj => {
-                // Determine visibility based on logic
-                // If isSoloActive, only show if associated with a soloed object
-                // But we need to map mesh -> loadedObject...
-                // Simpler: iterate loadedObjects and set their groups
-                if (skeletonHelpers.includes(obj)) {
-                    obj.visible = showSkeleton;
-                }
-            });
+            // Update Skeletons
+            skeletonHelpers.forEach(h => h.visible = showSkeleton);
 
+            // Update Groups based on Solo/Record state
             loadedObjects.forEach(record => {
                 let shouldShow = record.visible;
                 if (isSoloActive) {
@@ -1233,19 +1240,28 @@
                 }
                 record.group.visible = shouldShow;
 
-                // Opacity updates
+                // Visual feedback in list
                 if (isSoloActive) {
                     record.div.style.opacity = soloObjects.has(record) ? '1' : '0.5';
                 } else {
                     record.div.style.opacity = record.visible ? '1' : '0.5';
                 }
-
-                // Also update eye icon state in UI (visual only, record.visible is truth)
-                // If solo is active, eye icon might look confusing if we change it. 
-                // Let's leave eye icon as "intent" and opacity as "status".
             });
 
             updateStats();
+        }
+
+        function unhideAllMeshes() {
+            // User requested to ONLY unhide meshes (the ones hidden with H), 
+            // NOT objects (the ones hidden with the Eye icon or excluded by Solo).
+
+            // 1. Reset all Meshes (in case individual meshes were hidden via 'Hide Selected')
+            rootGroup.traverse(o => {
+                if (o.isMesh && !o._isSelectionHelper) o.visible = true;
+            });
+
+            // 2. Re-apply Object-level visibility (keeps hidden objects hidden)
+            updateVisibility();
         }
 
         function resetViewer() {
@@ -1623,8 +1639,9 @@
             nameSpan.textContent = name;
 
             const eye = document.createElement('span');
-            eye.className = 'icon-btn eye-btn';
-            eye.textContent = '👁';
+            eye.className = 'icon-btn eye-btn material-symbols-outlined';
+            eye.textContent = 'visibility';
+            eye.style.fontSize = '18px';
 
             const solo = document.createElement('span');
             solo.className = 'icon-btn solo-btn';
@@ -1640,6 +1657,8 @@
                 if (soloObjects.size > 0) return; // Disable toggle when solo is active (simplifies logic)
                 objRecord.visible = !objRecord.visible;
                 group.visible = objRecord.visible;
+
+                eye.textContent = objRecord.visible ? 'visibility' : 'visibility_off';
                 eye.classList.toggle('hidden', !objRecord.visible);
                 div.style.opacity = objRecord.visible ? '1' : '0.5';
                 updateStats();
@@ -1659,7 +1678,7 @@
                     solo.classList.add('active');
                 }
 
-                unhideAllMeshes(); // This function now handles Applying Visibility based on state
+                updateVisibility(); // This function now handles Applying Visibility based on state
                 updateDataRefVisibility();
             };
 
