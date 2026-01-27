@@ -1,4 +1,3 @@
-<!-- START OF FILE ai_studio_code (71).html -->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -1669,25 +1668,32 @@
                     }
 
                     // 3. PBR Maps (MAT)
+                    // X-Plane MAT format: R=Metalness, G=Roughness, B=AO
                     const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
                     if (mtex) {
-                        mtex.channel = 0;
-                        mat.roughnessMap = mtex;
-                        mat.metalnessMap = mtex;
-                        mat.aoMap = mtex;
-                        mat.roughness = 1.0;
+                        // Create separate texture references for each channel
+                        const metalTex = mtex.clone();
+                        const roughTex = mtex.clone();
+                        //const aoTex = mtex.clone();
+                        
+                        // Assign correct channels (0=R, 1=G, 2=B)
+                        metalTex.channel = 0; // Red = Metalness
+                        roughTex.channel = 1; // Green = Roughness
+                        //aoTex.channel = 2;    // Blue = AO
+                        
+                        mat.metalnessMap = metalTex;
+                        mat.roughnessMap = roughTex;
+                        //mat.aoMap = aoTex;
+                        
+                        // Set factors to 1.0 to use texture values directly
                         mat.metalness = 1.0;
-
-                        mat.onBeforeCompile = (shader) => {
-                            shader.fragmentShader = shader.fragmentShader.replace(
-                                'metalnessFactor *= texelMetalness.b;',
-                                'metalnessFactor *= texelMetalness.r;'
-                            );
-                            shader.fragmentShader = shader.fragmentShader.replace(
-                                'texture2D( aoMap, vAoMapUv ).r',
-                                'texture2D( aoMap, vAoMapUv ).b'
-                            );
-                        };
+                        mat.roughness = 1.0;
+                        //mat.aoMapIntensity = 1.0;
+                        
+                        // Ensure textures need update
+                        metalTex.needsUpdate = true;
+                        roughTex.needsUpdate = true;
+                        //aoTex.needsUpdate = true;
                     }
                 } else if (currentViewMode === 'albedo') {
                     const tex = findTex(baseName);
