@@ -568,13 +568,17 @@
             border: 1px solid transparent;
             color: #aaa;
             cursor: pointer;
-            width: 34px;
+            min-width: 34px;
             height: 34px;
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: 6px;
             transition: 0.2s;
+            padding: 0 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            white-space: nowrap;
         }
 
         .icon-btn-tool:hover {
@@ -802,13 +806,14 @@
             </div>
             <!-- VIEWPORT ACTIONS -->
             <div style="position: absolute; bottom: 20px; left: 20px; z-index: 100; display: flex; gap: 8px;">
-                <button id="hide-sel-btn" class="icon-btn-tool" style="width: 40px; height: 40px;"
-                    title="Hide Selected (H)">
-                    <span class="material-symbols-outlined">visibility_off</span>
+                <button id="hide-sel-btn" class="icon-btn-tool"
+                    style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;" title="Hide Selected (H)">
+                    Hide
                 </button>
-                <button id="unhide-all-btn" class="icon-btn-tool" style="width: 40px; height: 40px;"
+                <button id="unhide-all-btn" class="icon-btn-tool"
+                    style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;"
                     title="Unhide All (Shift+H)">
-                    <span class="material-symbols-outlined">visibility</span>
+                    Unhide All
                 </button>
             </div>
         </div>
@@ -864,6 +869,7 @@
         let skeletonHelpers = [];
         let loadedObjects = [];
         let soloObjects = new Set(); // Multi-select Set
+        let isShiftDown = false; // Global Shift Tracking
 
         // Resources
         let loadedTextures = new Map();
@@ -964,20 +970,22 @@
 
             window.addEventListener('resize', onResize);
             window.addEventListener('keydown', e => {
+                if (e.key === 'Shift') isShiftDown = true;
                 if (e.key.toLowerCase() === 'f' && document.activeElement.tagName !== 'INPUT') {
                     centerCamera();
                 }
                 // Handle hide/unhide shortcuts
                 if (e.key.toLowerCase() === 'h' && document.activeElement.tagName !== 'INPUT') {
                     if (e.shiftKey) {
-                        // Shift+H: unhide all
                         unhideAllMeshes();
                     } else {
-                        // H: hide selected
                         hideSelectedMesh();
                     }
-                    e.preventDefault(); // Prevent default behavior for these keys
+                    e.preventDefault();
                 }
+            });
+            window.addEventListener('keyup', e => {
+                if (e.key === 'Shift') isShiftDown = false;
             });
             viewport.addEventListener('mousedown', (e) => {
                 mouseDownPos.x = e.clientX;
@@ -993,9 +1001,9 @@
             document.getElementById('file-input').addEventListener('change', handleFile);
 
             // Button Logic
-            document.getElementById('recenter-btn').addEventListener('click', centerCamera);
-            document.getElementById('hide-sel-btn').addEventListener('click', hideSelectedMesh);
-            document.getElementById('unhide-all-btn').addEventListener('click', unhideAllMeshes);
+            document.getElementById('recenter-btn').addEventListener('click', (e) => { e.stopPropagation(); centerCamera(); });
+            document.getElementById('hide-sel-btn').addEventListener('click', (e) => { e.stopPropagation(); hideSelectedMesh(); });
+            document.getElementById('unhide-all-btn').addEventListener('click', (e) => { e.stopPropagation(); unhideAllMeshes(); });
             document.getElementById('clear-btn').addEventListener('click', resetViewer);
             document.getElementById('import-input').addEventListener('change', handleFile);
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
@@ -1734,25 +1742,117 @@
                 min -= margin; max += margin;
 
                 // Set default to 0 if valid, otherwise min
+                // 1. Collect Keyframes per DataRef
+                const drefKeys = new Map();
+                animationControllers.forEach(ctrl => {
+                    if (ctrl.dref && ctrl.keys) {
+                        if (!drefKeys.has(ctrl.dref)) drefKeys.set(ctrl.dref, new Set());
+                        ctrl.keys.forEach(k => drefKeys.get(ctrl.dref).add(k.val));
+                    }
+                    // Also hide/show limits
+                    if (ctrl.dref && (ctrl.type === 'hide' || ctrl.type === 'show')) {
+                        if (!drefKeys.has(ctrl.dref)) drefKeys.set(ctrl.dref, new Set());
+                        drefKeys.get(ctrl.dref).add(ctrl.min); // start
+                        drefKeys.get(ctrl.dref).add(ctrl.max); // end
+                    }
+                });
+
                 if (guiData[name] === undefined) {
                     guiData[name] = (0 >= min && 0 <= max) ? 0 : range.min;
                 }
 
+                // Create Controller
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen();
 
-                // Add sticking points at real min/max
-                const snapThreshold = span * 0.02;
+                // Keyframe Snapping & Ticks
+                const keys = drefKeys.has(name) ? Array.from(drefKeys.get(name)).sort((a, b) => a - b) : [];
+
+                // Inject Ticks
+                if (keys.length > 0) {
+                    // Wait for DOM to be ready
+                    setTimeout(() => {
+                        const widget = ctrl.domElement.querySelector('.widget');
+                        const slider = widget ? widget.querySelector('.slider') : null;
+                        if (slider) {
+                            slider.style.position = 'relative'; // Ensure relative context
+                            keys.forEach(k => {
+                                // Calculate percent
+                                const updateTick = (el, val) => {
+                                    const currMin = ctrl._min;
+                                    const currMax = ctrl._max;
+                                    const pct = (val - currMin) / (currMax - currMin) * 100;
+                                    el.style.left = pct + '%';
+                                    el.style.display = (pct >= 0 && pct <= 100) ? 'block' : 'none';
+                                };
+
+                                const tick = document.createElement('div');
+                                tick.style.position = 'absolute';
+                                tick.style.top = '0';
+                                tick.style.bottom = '0';
+                                tick.style.width = '1px';
+                                tick.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                                tick.style.pointerEvents = 'none';
+                                slider.appendChild(tick);
+
+                                updateTick(tick, k);
+                                // Attach update logic to controller so we can call it if range changes
+                                if (!ctrl._ticks) ctrl._ticks = [];
+                                ctrl._ticks.push({ el: tick, val: k });
+                            });
+                        }
+                    }, 0);
+                }
+
+                // Snap Logic
+                let isSnapping = false;
                 ctrl.onChange(val => {
-                    if (Math.abs(val - range.min) < snapThreshold) {
-                        guiData[name] = range.min;
-                        ctrl.updateDisplay();
-                    } else if (Math.abs(val - range.max) < snapThreshold) {
-                        guiData[name] = range.max;
-                        ctrl.updateDisplay();
+                    if (isSnapping) return;
+
+                    if (!isShiftDown && keys.length > 0) {
+                        // Find nearest
+                        let nearest = keys[0];
+                        let minDiff = Math.abs(val - keys[0]);
+                        for (let i = 1; i < keys.length; i++) {
+                            const d = Math.abs(val - keys[i]);
+                            if (d < minDiff) { minDiff = d; nearest = keys[i]; }
+                        }
+
+                        // Snap threshold: 2% of range
+                        const threshold = (ctrl._max - ctrl._min) * 0.02;
+                        if (minDiff < threshold) {
+                            isSnapping = true;
+                            ctrl.setValue(nearest);
+                            isSnapping = false;
+                            val = nearest;
+                        }
                     }
                 });
 
-                // Add click-to-copy and accessibility attributes
+                // Auto-Expand Range on Text Input
+                setTimeout(() => {
+                    const input = ctrl.domElement.querySelector('input');
+                    if (input) {
+                        input.addEventListener('input', (e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                                let changed = false;
+                                if (val > ctrl._max) { ctrl.max(val); changed = true; }
+                                if (val < ctrl._min) { ctrl.min(val); changed = true; }
+
+                                if (changed && ctrl._ticks) {
+                                    // Update ticks positions
+                                    ctrl._ticks.forEach(t => {
+                                        const pct = (t.val - ctrl._min) / (ctrl._max - ctrl._min) * 100;
+                                        t.el.style.left = pct + '%';
+                                        t.el.style.display = (pct >= 0 && pct <= 100) ? 'block' : 'none';
+                                    });
+                                }
+                            }
+                        });
+                    }
+                }, 10);
+
+                // Add click-to-copy
                 setTimeout(() => {
                     const label = ctrl.domElement.querySelector('.name');
                     if (label) {
@@ -1764,8 +1864,8 @@
                     }
                     const inputs = ctrl.domElement.querySelectorAll('input, select');
                     inputs.forEach((input, idx) => {
-                        if (!input.name) input.name = name + (idx > 0 ? '-' + idx : '');
-                        if (!input.id) input.id = 'gui-' + name.replace(/\W/g, '-') + (idx > 0 ? '-' + idx : '');
+                        if (!input.name) input.name = name;
+                        if (!input.id) input.id = 'gui-' + name.replace(/\W/g, '-');
                     });
                 }, 10);
 
