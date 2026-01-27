@@ -242,6 +242,8 @@
             border-bottom: 1px solid #252525;
             cursor: pointer;
             transition: background 0.1s;
+            color: #666;
+            /* Darker default text */
         }
 
         .obj-item:hover {
@@ -249,8 +251,19 @@
             color: #fff;
         }
 
-        .obj-item.selected-obj {
-            background: var(--item-selected);
+        /* Hover state from JS (synced with box helper) */
+        .obj-item.hover-active {
+            background: var(--item-hover);
+            color: #fff;
+        }
+
+        /* Selected state from clicking mesh or item */
+        .obj-item.active-entry {
+            background: rgba(255, 255, 255, 0.08);
+            /* Much more subtle than var(--item-selected) */
+            color: #fff;
+            font-weight: 500;
+            border-left: 2px solid var(--accent);
         }
 
         .obj-name {
@@ -1177,6 +1190,7 @@
                     selectedMeshes.splice(idx, 1);
                     updateDataRefVisibility();
                     updateStats();
+                    updateObjectListSelection();
                     return;
                 }
                 selectedMeshes.push(mesh);
@@ -1185,6 +1199,7 @@
             addHighlight(mesh);
             updateDataRefVisibility();
             updateStats();
+            updateObjectListSelection();
         }
 
         function addHighlight(mesh) {
@@ -1226,6 +1241,29 @@
             selectedMeshes = [];
             updateDataRefVisibility();
             updateStats();
+            updateObjectListSelection();
+        }
+
+        function updateObjectListSelection() {
+            // First clear all
+            loadedObjects.forEach(rec => rec.div.classList.remove('active-entry'));
+
+            // Find objects involved in selection
+            const activeGroups = new Set();
+            selectedMeshes.forEach(m => {
+                let curr = m;
+                while (curr && curr.parent !== rootGroup) {
+                    curr = curr.parent;
+                }
+                if (curr) activeGroups.add(curr);
+            });
+
+            loadedObjects.forEach(rec => {
+                if (activeGroups.has(rec.group)) {
+                    rec.div.classList.add('active-entry');
+                    rec.div.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
         }
 
         function hideSelectedMesh() {
@@ -1708,12 +1746,12 @@
             // Hover Highlight
             let boxHelper = null;
             div.onmouseenter = () => {
-                div.classList.add('selected-obj');
+                div.classList.add('hover-active');
                 boxHelper = new THREE.BoxHelper(group, 0xffff00);
                 scene.add(boxHelper);
             };
             div.onmouseleave = () => {
-                div.classList.remove('selected-obj');
+                div.classList.remove('hover-active');
                 if (boxHelper) scene.remove(boxHelper);
                 boxHelper = null;
             };
