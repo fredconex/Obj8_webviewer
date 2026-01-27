@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>X-Plane OBJ8 Inspector V14 - Dark Studio</title>
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
         :root {
             --bg-color: #121212;
@@ -543,6 +545,155 @@
         .collapsed #stats-toggle-icon {
             transform: rotate(-90deg);
         }
+
+        /* --- VIEWPORT TOOLBAR --- */
+        #viewport-toolbar {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            display: flex;
+            gap: 6px;
+            z-index: 100;
+            background: rgba(30, 30, 30, 0.85);
+            /* Slightly transparent */
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            align-items: center;
+        }
+
+        .icon-btn-tool {
+            background: transparent;
+            border: 1px solid transparent;
+            color: #aaa;
+            cursor: pointer;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: 0.2s;
+        }
+
+        .icon-btn-tool:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .icon-btn-tool.active {
+            color: var(--accent);
+            border: 1px solid rgba(77, 184, 255, 0.3);
+            background: rgba(77, 184, 255, 0.1);
+        }
+
+        .icon-btn-tool span {
+            font-size: 20px;
+        }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 20px;
+            background: #444;
+            margin: 0 4px;
+        }
+
+        .toolbar-select {
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 0 10px;
+            border-radius: 6px;
+            height: 34px;
+            cursor: pointer;
+            outline: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .toolbar-select:hover {
+            border-color: #666;
+        }
+
+        /* --- STATS OVERLAY --- */
+        #stats-overlay {
+            position: absolute;
+            top: 70px;
+            /* Below toolbar */
+            left: 15px;
+            background: rgba(0, 0, 0, 0.0);
+            /* Transparent as requested */
+            padding: 0;
+            pointer-events: none;
+            z-index: 90;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-line {
+            color: #777;
+            font-size: 0.8rem;
+            font-family: 'Consolas', monospace;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .stat-line .val {
+            color: #ddd;
+            margin-left: 8px;
+        }
+
+        /* --- SETTINGS POPUP --- */
+        #settings-popup {
+            position: absolute;
+            top: 100%;
+            /* Below parent */
+            left: 0;
+            margin-top: 10px;
+            background: rgba(25, 25, 25, 0.95);
+            border: 1px solid #444;
+            padding: 15px;
+            border-radius: 8px;
+            width: 240px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            z-index: 101;
+            transform-origin: top left;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        #settings-popup.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+        }
+
+        .popup-section h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #666;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+
+        .popup-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+            color: #ccc;
+        }
+
+        .popup-row span.material-symbols-outlined {
+            font-size: 18px;
+            color: #888;
+        }
     </style>
 
     <script type="importmap">
@@ -561,21 +712,18 @@
     <div id="app-container">
         <!-- SIDEBAR -->
         <div id="sidebar" class="hidden-ui">
-            <h1>OBJ8 Inspector <button class="btn btn-danger" id="close-btn" name="close-btn">Close</button></h1>
-
-            <div id="stats-container" class="collapsible-container">
-                <div class="collapsible-header" id="stats-header">
-                    <span>Statistics</span>
-                    <span id="stats-toggle-icon">▼</span>
+            <h1>OBJ8
+                <div style="display:flex; gap:6px;">
+                    <label class="btn"
+                        style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <span>Import</span>
+                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr" multiple
+                            style="display:none">
+                    </label>
+                    <button class="btn btn-danger" id="clear-btn" name="clear-btn"
+                        style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
                 </div>
-                <div id="stats-content" class="collapsible-content">
-                    <div class="stat-row"><span>Files:</span> <span id="f-count" class="stat-val">0</span></div>
-                    <div class="stat-row"><span>Vertices:</span> <span id="v-count" class="stat-val">0</span></div>
-                    <div class="stat-row"><span>Triangles:</span> <span id="m-count" class="stat-val">0</span></div>
-                    <div class="stat-row"><span>DataRefs:</span> <span id="d-count" class="stat-val">0</span></div>
-                    <div class="stat-row"><span>Animations:</span> <span id="a-count" class="stat-val">0</span></div>
-                </div>
-            </div>
+            </h1>
 
             <h2>Objects</h2>
             <div id="obj-list-wrapper">
@@ -583,48 +731,76 @@
                     <!-- Items injected by JS -->
                 </div>
             </div>
-
-            <h2>View</h2>
-            <div class="stat-row">
-                <label for="view-mode-select">Mode:</label>
-                <select id="view-mode-select" name="view-mode-select" class="btn"
-                    style="width: 150px; margin-top: 0; padding: 4px;">
-                    <option value="material">Material</option>
-                    <option value="solid">Solid</option>
-                    <option value="albedo">Albedo (Unlit)</option>
-                    <option value="lit_only">Lit Only (Emissive)</option>
-                    <option value="normals">Normals</option>
-                    <option value="wireframe">Wireframe</option>
-                </select>
-            </div>
-            <button class="btn" id="recenter-btn" name="recenter-btn">Recenter Camera</button>
-            <label class="chk-label"><input type="checkbox" id="grid-chk" name="grid-chk" checked> Show World
-                Grid</label>
-            <label class="chk-label"><input type="checkbox" id="skeleton-chk" name="skeleton-chk"> Show Pivot
-                Skeleton</label>
-            <!-- Shadows removed per request -->
-
-            <h2>Material Defaults</h2>
-            <div class="stat-row"><label for="mat-rough">Roughness</label><input type="range" id="mat-rough"
-                    name="mat-rough" min="0" max="1" step="0.05">
-            </div>
-            <div class="stat-row"><label for="mat-metal">Metalness</label><input type="range" id="mat-metal"
-                    name="mat-metal" min="0" max="1" step="0.05">
-            </div>
-            <div class="stat-row"><label for="cam-exposure">Exposure</label><input type="range" id="cam-exposure"
-                    name="cam-exposure" min="0.1" max="2" step="0.1">
-            </div>
-
-            <h2>Environment</h2>
-            <div class="stat-row">
-                <label for="env-intensity">Intensity</label>
-                <input type="range" id="env-intensity" name="env-intensity" min="0" max="2" step="0.1">
-            </div>
-            <label class="chk-label"><input type="checkbox" id="env-bg-chk" name="env-bg-chk"> Show Background</label>
         </div>
 
         <!-- MAIN 3D VIEWPORT -->
-        <div id="viewport"></div>
+        <div id="viewport">
+            <!-- TOOLBAR -->
+            <div id="viewport-toolbar" class="hidden-ui">
+                <div class="toolbar-group">
+                    <select id="view-mode-select" class="toolbar-select" title="View Mode">
+                        <option value="material">Material</option>
+                        <option value="solid">Solid</option>
+                        <option value="albedo">Albedo</option>
+                        <option value="lit_only">Lit Only</option>
+                        <option value="normals">Normals</option>
+                        <option value="wireframe">Wireframe</option>
+                    </select>
+                </div>
+
+                <div class="toolbar-separator"></div>
+
+                <button id="recenter-btn" class="icon-btn-tool" title="Recenter Camera"><span
+                        class="material-symbols-outlined">center_focus_strong</span></button>
+                <button id="toggle-grid-btn" class="icon-btn-tool active" title="Toggle Grid"><span
+                        class="material-symbols-outlined">grid_4x4</span></button>
+                <button id="toggle-skeleton-btn" class="icon-btn-tool" title="Toggle Pivot Skeleton"><span
+                        class="material-symbols-outlined">open_with</span></button>
+
+                <div class="toolbar-separator"></div>
+
+                <div style="position: relative;">
+                    <button id="settings-btn" class="icon-btn-tool" title="Settings"><span
+                            class="material-symbols-outlined">settings</span></button>
+                    <!-- POPUP -->
+                    <div id="settings-popup" class="hidden">
+                        <div class="popup-section">
+                            <h3>Material Defaults</h3>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Roughness">texture</span>
+                                <input type="range" id="mat-rough" min="0" max="1" step="0.05" title="Roughness">
+                            </div>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Metalness">diamond</span>
+                                <input type="range" id="mat-metal" min="0" max="1" step="0.05" title="Metalness">
+                            </div>
+                        </div>
+                        <div class="popup-section">
+                            <h3>Environment</h3>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Exposure">exposure</span>
+                                <input type="range" id="cam-exposure" min="0.1" max="2" step="0.1" title="Exposure">
+                            </div>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Env Intensity">light_mode</span>
+                                <input type="range" id="env-intensity" min="0" max="2" step="0.1" title="Env Intensity">
+                            </div>
+                            <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
+                                    Background</label></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATS -->
+            <div id="stats-overlay" class="hidden-ui">
+                <div class="stat-line">Verts: <span id="v-count" class="val">0 / 0</span></div>
+                <div class="stat-line">Tris: <span id="m-count" class="val">0 / 0</span></div>
+                <div class="stat-line">Objects: <span id="o-count" class="val">0 / 0</span></div>
+                <div class="stat-line">DataRefs: <span id="d-count" class="val">0</span></div>
+                <div class="stat-line">Anims: <span id="a-count" class="val">0</span></div>
+            </div>
+        </div>
     </div>
 
     <!-- FLOATING CONTROLS (Right) -->
@@ -676,7 +852,7 @@
         let guiControllers = [];
         let skeletonHelpers = [];
         let loadedObjects = [];
-        let soloModeObject = null;
+        let soloObjects = new Set(); // Multi-select Set
 
         // Resources
         let loadedTextures = new Map();
@@ -807,7 +983,8 @@
 
             // Button Logic
             document.getElementById('recenter-btn').addEventListener('click', centerCamera);
-            document.getElementById('close-btn').addEventListener('click', resetViewer);
+            document.getElementById('clear-btn').addEventListener('click', resetViewer);
+            document.getElementById('import-input').addEventListener('change', handleFile);
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
             document.getElementById('search-clear').addEventListener('click', () => {
                 document.getElementById('dref-search').value = '';
@@ -818,18 +995,16 @@
                 refreshMaterials();
             });
 
-
-            document.getElementById('stats-header').addEventListener('click', toggleStats);
+            document.getElementById('stats-overlay').classList.remove('hidden-ui'); // Show stats
+            document.getElementById('viewport-toolbar').classList.remove('hidden-ui'); // Show toolbar
 
             animate();
         }
 
-        function toggleStats() {
-            const content = document.getElementById('stats-content');
-            const container = document.getElementById('stats-container');
-            content.classList.toggle('collapsed');
-            container.classList.toggle('collapsed');
-        }
+
+
+        // Removed toggleStats as we use always-on overlay
+        // function toggleStats() ...
 
         function loadSettings() {
             const s = localStorage.getItem('xp_obj_viewer_settings_v14');
@@ -838,7 +1013,10 @@
         function saveSettings() { localStorage.setItem('xp_obj_viewer_settings_v14', JSON.stringify(settings)); }
 
         function setupDOMControls() {
-            const setVal = (id, val) => document.getElementById(id).value = val;
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.value = val;
+            };
             setVal('mat-rough', settings.rough);
             setVal('mat-metal', settings.metal);
             setVal('cam-exposure', settings.exposure);
@@ -861,11 +1039,40 @@
                 saveSettings();
             });
 
-            document.getElementById('grid-chk').addEventListener('change', e => {
-                worldGrid.visible = e.target.checked;
-                worldAxes.visible = e.target.checked;
+            // Toolbar Buttons
+            const gridBtn = document.getElementById('toggle-grid-btn');
+            gridBtn.addEventListener('click', () => {
+                worldGrid.visible = !worldGrid.visible;
+                worldAxes.visible = worldGrid.visible;
+                gridBtn.classList.toggle('active', worldGrid.visible);
             });
-            document.getElementById('skeleton-chk').addEventListener('change', e => skeletonHelpers.forEach(h => h.visible = e.target.checked));
+            gridBtn.classList.toggle('active', true); // Default on
+
+            const skelBtn = document.getElementById('toggle-skeleton-btn');
+            skelBtn.addEventListener('click', () => {
+                const vis = !skelBtn.classList.contains('active');
+                skelBtn.classList.toggle('active', vis);
+                skeletonHelpers.forEach(h => h.visible = vis);
+                // Also update logic for unhideAllMeshes references if needed, 
+                // but simpler to just use class check primarily or store in a var
+            });
+
+            // Settings Popup
+            const setBtn = document.getElementById('settings-btn');
+            const setPop = document.getElementById('settings-popup');
+            setBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setPop.classList.toggle('hidden');
+                setBtn.classList.toggle('active', !setPop.classList.contains('hidden'));
+            });
+
+            // Close popup on click outside
+            window.addEventListener('click', (e) => {
+                if (!setPop.contains(e.target) && e.target !== setBtn && !setBtn.contains(e.target)) {
+                    setPop.classList.add('hidden');
+                    setBtn.classList.remove('active');
+                }
+            });
         }
 
         function updateBackground() {
@@ -946,6 +1153,7 @@
                     removeHighlight(mesh);
                     selectedMeshes.splice(idx, 1);
                     updateDataRefVisibility();
+                    updateStats();
                     return;
                 }
                 selectedMeshes.push(mesh);
@@ -953,6 +1161,7 @@
 
             addHighlight(mesh);
             updateDataRefVisibility();
+            updateStats();
         }
 
         function addHighlight(mesh) {
@@ -993,6 +1202,7 @@
             selectedMeshes.forEach(m => removeHighlight(m));
             selectedMeshes = [];
             updateDataRefVisibility();
+            updateStats();
         }
 
         function hideSelectedMesh() {
@@ -1003,26 +1213,39 @@
         }
 
         function unhideAllMeshes() {
-            const showSkeleton = document.getElementById('skeleton-chk').checked;
+            const showSkeleton = document.getElementById('toggle-skeleton-btn').classList.contains('active');
+            const isSoloActive = soloObjects.size > 0;
 
             rootGroup.traverse(obj => {
-                // If it's a mesh or a group, unhide it
-                if (obj.isMesh || obj.isGroup) {
-                    obj.visible = true;
-                }
-
-                // If it's a skeleton helper part, check the global skeleton visibility setting
+                // Determine visibility based on logic
+                // If isSoloActive, only show if associated with a soloed object
+                // But we need to map mesh -> loadedObject...
+                // Simpler: iterate loadedObjects and set their groups
                 if (skeletonHelpers.includes(obj)) {
                     obj.visible = showSkeleton;
                 }
             });
-            // Update sidebar icons
-            loadedObjects.forEach(obj => {
-                obj.visible = true;
-                obj.eye.classList.remove('hidden');
-                obj.div.style.opacity = '1';
+
+            loadedObjects.forEach(record => {
+                let shouldShow = record.visible;
+                if (isSoloActive) {
+                    shouldShow = soloObjects.has(record);
+                }
+                record.group.visible = shouldShow;
+
+                // Opacity updates
+                if (isSoloActive) {
+                    record.div.style.opacity = soloObjects.has(record) ? '1' : '0.5';
+                } else {
+                    record.div.style.opacity = record.visible ? '1' : '0.5';
+                }
+
+                // Also update eye icon state in UI (visual only, record.visible is truth)
+                // If solo is active, eye icon might look confusing if we change it. 
+                // Let's leave eye icon as "intent" and opacity as "status".
             });
-            soloModeObject = null;
+
+            updateStats();
         }
 
         function resetViewer() {
@@ -1033,7 +1256,7 @@
             guiData = {};
             guiControllers = [];
             loadedObjects = [];
-            soloModeObject = null;
+            soloObjects.clear();
 
             materialCache.clear();
             loadedTextures.clear();
@@ -1053,6 +1276,8 @@
             document.getElementById('upload-overlay').classList.remove('hidden');
             document.getElementById('sidebar').classList.add('hidden-ui');
             document.getElementById('ui-right-container').classList.add('hidden-ui');
+            document.getElementById('viewport-toolbar').classList.add('hidden-ui');
+            document.getElementById('stats-overlay').classList.add('hidden-ui');
             updateStats();
         }
 
@@ -1118,13 +1343,36 @@
 
             // 3. Finalize UI and View
             buildGUI();
+            refreshMaterials(); // Ensure any newly loaded textures are applied to existing meshes
             updateStats();
             centerCamera();
         }
 
         // --- PARSER ---
         function parseOBJ8(text, fileName) {
-            filesLoadedCount++;
+
+            // Check if object exists and remove it to overwrite
+            const existingIdx = loadedObjects.findIndex(o => o.name === fileName);
+            if (existingIdx !== -1) {
+                const oldRecord = loadedObjects[existingIdx];
+                // Remove from scene & solo
+                rootGroup.remove(oldRecord.group);
+                if (oldRecord.group.geometry) oldRecord.group.geometry.dispose(); // Group doesn't have geometry but children do
+                oldRecord.group.traverse(c => {
+                    if (c.geometry) c.geometry.dispose();
+                    // if (c.material) c.material.dispose(); // Managed by cache
+                });
+
+                // Remove/Replace UI
+                // We'll actually just remove the old record and let subsequent code append new one.
+                // Ideally we'd replace in place to keep order, but appending is safer for now.
+                oldRecord.div.remove();
+                loadedObjects.splice(existingIdx, 1);
+                soloObjects.delete(oldRecord);
+            } else {
+                filesLoadedCount++;
+            }
+
             const fileGroup = new THREE.Group();
             fileGroup.name = fileName;
             rootGroup.add(fileGroup);
@@ -1225,26 +1473,43 @@
                             addSkeletonHelper(wrapper, 0xff0000, 0.1);
                         }
                     }
+                    else if (cmd === 'ANIM_hide' || cmd === 'ANIM_show') {
+                        // Standard hide/show: v1 v2 dref
+                        // If dref value is between v1 and v2, object is Hidden (ANIM_hide) or Shown (ANIM_show)
+                        const wrapper = createWrapperGroup(groupStack);
+                        const v1 = parseFloat(tokens[1]);
+                        const v2 = parseFloat(tokens[2]);
+                        const dref = tokens[3];
+                        registerDataRef(dref, v1, v2);
+                        animationControllers.push({
+                            type: cmd === 'ANIM_hide' ? 'hide' : 'show',
+                            target: wrapper,
+                            dref: dref,
+                            min: v1,
+                            max: v2
+                        });
+                        addSkeletonHelper(wrapper, 0x555555, 0.05);
+                    }
                     else if (cmd === 'ANIM_trans_begin') {
                         const dref = tokens[1]; // Might be undefined
-                        currentAnimKey = { 
-                            type: 'translate', 
-                            dref: dref, 
+                        currentAnimKey = {
+                            type: 'translate',
+                            dref: dref,
                             isStatic: !dref, // Flag as static if no DataRef
-                            keys: [], 
-                            group: createWrapperGroup(groupStack) 
+                            keys: [],
+                            group: createWrapperGroup(groupStack)
                         };
                     }
                     else if (cmd === 'ANIM_rotate_begin') {
                         const axis = new THREE.Vector3(parseFloat(tokens[1]), parseFloat(tokens[2]), parseFloat(tokens[3])).normalize();
                         const dref = tokens[4]; // Might be undefined
-                        currentAnimKey = { 
-                            type: 'rotate', 
-                            dref: dref, 
-                            axis: axis, 
+                        currentAnimKey = {
+                            type: 'rotate',
+                            dref: dref,
+                            axis: axis,
                             isStatic: !dref, // Flag as static if no DataRef
-                            keys: [], 
-                            group: createWrapperGroup(groupStack) 
+                            keys: [],
+                            group: createWrapperGroup(groupStack)
                         };
                         addSkeletonHelper(currentAnimKey.group, 0xff00ff, 0.1);
                     }
@@ -1255,16 +1520,16 @@
                             if (!currentAnimKey.isStatic) {
                                 registerDataRef(currentAnimKey.dref, val);
                             }
-                            
+
                             if (currentAnimKey.type === 'translate') {
-                                currentAnimKey.keys.push({ 
-                                    val: val, 
-                                    pos: new THREE.Vector3(parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4])) 
+                                currentAnimKey.keys.push({
+                                    val: val,
+                                    pos: new THREE.Vector3(parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4]))
                                 });
                             } else {
-                                currentAnimKey.keys.push({ 
-                                    val: val, 
-                                    angle: parseFloat(tokens[2]) 
+                                currentAnimKey.keys.push({
+                                    val: val,
+                                    angle: parseFloat(tokens[2])
                                 });
                             }
                         }
@@ -1275,13 +1540,13 @@
                                 // STATIC: Calculate transform for default value 0 and apply immediately
                                 // We assume input is 0 (standard default for un-driven animations)
                                 const staticVal = interpolate(0, currentAnimKey.keys);
-                                
+
                                 if (staticVal !== null) {
                                     if (currentAnimKey.type === 'translate') {
                                         currentAnimKey.group.position.copy(staticVal);
                                     } else if (currentAnimKey.type === 'rotate') {
                                         currentAnimKey.group.quaternion.setFromAxisAngle(
-                                            currentAnimKey.axis, 
+                                            currentAnimKey.axis,
                                             staticVal * (Math.PI / 180)
                                         );
                                     }
@@ -1289,12 +1554,12 @@
                                 // We do NOT push to animationControllers, so it won't appear in the list
                             } else {
                                 // DYNAMIC: Push to controllers
-                                animationControllers.push({ 
-                                    type: currentAnimKey.type, 
-                                    target: currentAnimKey.group, 
-                                    dref: currentAnimKey.dref, 
-                                    axis: currentAnimKey.axis, 
-                                    keys: currentAnimKey.keys 
+                                animationControllers.push({
+                                    type: currentAnimKey.type,
+                                    target: currentAnimKey.group,
+                                    dref: currentAnimKey.dref,
+                                    axis: currentAnimKey.axis,
+                                    keys: currentAnimKey.keys
                                 });
                             }
                             currentAnimKey = null;
@@ -1372,10 +1637,12 @@
             // Toggle Visibility
             eye.onclick = (e) => {
                 e.stopPropagation();
-                if (soloModeObject) return; // Disable toggle in solo mode
+                if (soloObjects.size > 0) return; // Disable toggle when solo is active (simplifies logic)
                 objRecord.visible = !objRecord.visible;
                 group.visible = objRecord.visible;
                 eye.classList.toggle('hidden', !objRecord.visible);
+                div.style.opacity = objRecord.visible ? '1' : '0.5';
+                updateStats();
                 updateDataRefVisibility();
             };
 
@@ -1383,33 +1650,17 @@
             solo.onclick = (e) => {
                 e.stopPropagation();
 
-                // Toggle Solo
-                if (soloModeObject === objRecord) {
-                    // Turn OFF Solo
-                    soloModeObject = null;
+                // Toggle Solo Membership
+                if (soloObjects.has(objRecord)) {
+                    soloObjects.delete(objRecord);
                     solo.classList.remove('active');
-                    // Restore previous states
-                    loadedObjects.forEach(o => {
-                        o.group.visible = o.visible;
-                        o.div.style.opacity = '1';
-                    });
                 } else {
-                    // Turn ON Solo (or switch solo target)
-                    if (soloModeObject) soloModeObject.solo.classList.remove('active');
-                    soloModeObject = objRecord;
+                    soloObjects.add(objRecord);
                     solo.classList.add('active');
-
-                    loadedObjects.forEach(o => {
-                        if (o === soloModeObject) {
-                            o.group.visible = true;
-                            o.div.style.opacity = '1';
-                        } else {
-                            o.group.visible = false;
-                            o.div.style.opacity = '0.5';
-                        }
-                    });
-                    updateDataRefVisibility();
                 }
+
+                unhideAllMeshes(); // This function now handles Applying Visibility based on state
+                updateDataRefVisibility();
             };
 
             // Hover Highlight
@@ -1418,13 +1669,11 @@
                 div.classList.add('selected-obj');
                 boxHelper = new THREE.BoxHelper(group, 0xffff00);
                 scene.add(boxHelper);
-                updateStats(group);
             };
             div.onmouseleave = () => {
                 div.classList.remove('selected-obj');
                 if (boxHelper) scene.remove(boxHelper);
                 boxHelper = null;
-                updateStats();
             };
 
             div.appendChild(nameSpan);
@@ -1631,21 +1880,21 @@
                         const metalTex = mtex.clone();
                         const roughTex = mtex.clone();
                         //const aoTex = mtex.clone();
-                        
+
                         // Assign correct channels (0=R, 1=G, 2=B)
                         metalTex.channel = 0; // Red = Metalness
                         roughTex.channel = 1; // Green = Roughness
                         //aoTex.channel = 2;    // Blue = AO
-                        
+
                         mat.metalnessMap = metalTex;
                         mat.roughnessMap = roughTex;
                         //mat.aoMap = aoTex;
-                        
+
                         // Set factors to 1.0 to use texture values directly
                         mat.metalness = 1.0;
                         mat.roughness = 1.0;
                         //mat.aoMapIntensity = 1.0;
-                        
+
                         // Ensure textures need update
                         metalTex.needsUpdate = true;
                         roughTex.needsUpdate = true;
@@ -1665,6 +1914,8 @@
         }
 
         function refreshMaterials() {
+            // Clear cache so we really fetch potentially new textures
+            materialCache.clear();
             rootGroup.traverse(obj => {
                 if (obj.isMesh && !obj._isSelectionHelper) {
                     const t = obj._textureName, l = obj._litName, n = obj._normalName;
@@ -1676,62 +1927,94 @@
         function addSkeletonHelper(group, color, size) {
             const axes = new THREE.AxesHelper(size);
             group.add(axes);
-            const visible = document.getElementById('skeleton-chk').checked;
+            const visible = document.getElementById('toggle-skeleton-btn').classList.contains('active');
             axes.visible = visible;
             skeletonHelpers.push(axes);
         }
 
         function updateStats(group = null) {
-            let fCount = filesLoadedCount;
-            let vCount = 0;
-            let tCount = 0;
+            let vTotal = 0, tTotal = 0;
+            let vSel = 0, tSel = 0;
+            let oTotal = 0, oSel = 0;
+
             let dRefs = new Set();
             let aCount = 0;
 
             if (group) {
-                // Stats for specific object/group
-                fCount = 1;
-                group.traverse(obj => {
-                    if (obj.isMesh && !obj._isSelectionHelper) {
-                        vCount += obj.geometry.attributes.position.count;
-                        if (obj.geometry.index) {
-                            tCount += obj.geometry.index.count / 3;
-                        } else {
-                            tCount += obj.geometry.attributes.position.count / 3;
+                // Stats for specific object/group override? 
+                // User asked for "Selected / Total". 
+                // Hover stats might just show that object's stats?
+                // Let's stick to global stats for now to meet the "like Blender" requirement 
+                // but maybe we can just compute global here every time.
+            }
+
+            // 1. Calculate Visible Totals
+            loadedObjects.forEach(obj => {
+                if (obj.group.visible) {
+                    oTotal++;
+                    obj.group.traverse(o => {
+                        if (o.isMesh && !o._isSelectionHelper) {
+                            vTotal += o.geometry.attributes.position.count;
+                            if (o.geometry.index) {
+                                tTotal += o.geometry.index.count / 3;
+                            } else {
+                                tTotal += o.geometry.attributes.position.count / 3;
+                            }
                         }
+                    });
+                }
+            });
+
+            // 2. Calculate Selected Totals
+            if (selectedMeshes.length > 0) {
+                // Count unique top-level objects selected
+                let uniqueSelObjs = new Set();
+                selectedMeshes.forEach(m => {
+                    let curr = m;
+                    // Traverse up to find the root object (child of rootGroup)
+                    while (curr && curr.parent !== rootGroup) {
+                        curr = curr.parent;
                     }
-                    // Count animations and datarefs specifically for this hierarchy
-                    for (let ctrl of animationControllers) {
-                        if (ctrl.target === obj) {
-                            aCount++;
-                            if (ctrl.dref) dRefs.add(ctrl.dref);
-                        }
+                    if (curr && curr.name) { // Ensure it's one of our loaded objects
+                        uniqueSelObjs.add(curr);
                     }
                 });
-            } else {
-                // Global stats
-                rootGroup.traverse(obj => {
-                    if (obj.isMesh && !obj._isSelectionHelper) {
-                        vCount += obj.geometry.attributes.position.count;
-                        if (obj.geometry.index) {
-                            tCount += obj.geometry.index.count / 3;
-                        } else {
-                            tCount += obj.geometry.attributes.position.count / 3;
-                        }
+
+                oSel = uniqueSelObjs.size;
+
+                // For verts/tris, we still sum up the actual selected MESHES because in Object Mode in Blender, 
+                // selecting an object implies selecting all its geometry stats. 
+                // However, our selection is mesh-based (raycast).
+                // If the user wants "Object" stats, we should probably verify if we are in "Object Mode" or "Edit Mode" equivalent.
+                // Assuming "Object Mode" equivalent: 
+                // If I select a mesh part of an airplane, I probably consider the "Airplane" selected?
+                // Or does the user mean "only the vertices of the selected mesh"?
+                // "Stats should display the selected mesh not object" -> likely means specific mesh stats.
+                // BUT "Stats should display the selected mesh not object" implies counting the mesh itself?
+                // Wait, "Selected / Total" usually refers to Object count.
+                // Let's stick to summing selected mesh geometry for V/T, and top-level objects for O.
+
+                selectedMeshes.forEach(m => {
+                    vSel += m.geometry.attributes.position.count;
+                    if (m.geometry.index) {
+                        tSel += m.geometry.index.count / 3;
+                    } else {
+                        tSel += m.geometry.attributes.position.count / 3;
                     }
-                });
-                // Unique datarefs and total animations globally
-                animationControllers.forEach(ctrl => {
-                    aCount++;
-                    if (ctrl.dref) dRefs.add(ctrl.dref);
                 });
             }
 
-            const format = (n) => Math.round(n).toLocaleString();
+            // 3. DataRefs and Anims (Global)
+            animationControllers.forEach(ctrl => {
+                aCount++;
+                if (ctrl.dref) dRefs.add(ctrl.dref);
+            });
 
-            document.getElementById('f-count').innerText = format(fCount);
-            document.getElementById('v-count').innerText = format(vCount);
-            document.getElementById('m-count').innerText = format(tCount);
+            const format = (n) => n.toLocaleString();
+
+            document.getElementById('v-count').innerText = `${format(vSel)} / ${format(vTotal)}`;
+            document.getElementById('m-count').innerText = `${format(tSel)} / ${format(tTotal)}`;
+            document.getElementById('o-count').innerText = `${format(oSel)} / ${format(oTotal)}`;
             document.getElementById('d-count').innerText = format(dRefs.size);
             document.getElementById('a-count').innerText = format(aCount);
         }
