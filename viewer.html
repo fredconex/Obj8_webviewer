@@ -498,37 +498,6 @@
             }
         }
 
-        /* --- CONTEXT MENU --- */
-        #context-menu {
-            position: fixed;
-            background: #252525;
-            border: 1px solid #444;
-            border-radius: 4px;
-            padding: 5px 0;
-            z-index: 1000;
-            display: none;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            min-width: 150px;
-        }
-
-        .context-menu-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            color: #ddd;
-            transition: background 0.1s;
-        }
-
-        .context-menu-item:hover {
-            background: var(--accent);
-            color: #000;
-        }
-
-        .context-menu-item.disabled {
-            color: #555;
-            pointer-events: none;
-        }
-
         /* --- COLLAPSIBLE STATS --- */
         .collapsible-container {
             border: 1px solid var(--border-color);
@@ -656,12 +625,6 @@
 
         <!-- MAIN 3D VIEWPORT -->
         <div id="viewport"></div>
-    </div>
-
-    <!-- CONTEXT MENU -->
-    <div id="context-menu">
-        <div class="context-menu-item" id="cm-hide">Hide Selected Mesh</div>
-        <div class="context-menu-item" id="cm-unhide-all">Unhide All</div>
     </div>
 
     <!-- FLOATING CONTROLS (Right) -->
@@ -817,6 +780,17 @@
                 if (e.key.toLowerCase() === 'f' && document.activeElement.tagName !== 'INPUT') {
                     centerCamera();
                 }
+                // Handle hide/unhide shortcuts
+                if (e.key.toLowerCase() === 'h' && document.activeElement.tagName !== 'INPUT') {
+                    if (e.shiftKey) {
+                        // Shift+H: unhide all
+                        unhideAllMeshes();
+                    } else {
+                        // H: hide selected
+                        hideSelectedMesh();
+                    }
+                    e.preventDefault(); // Prevent default behavior for these keys
+                }
             });
             viewport.addEventListener('mousedown', (e) => {
                 mouseDownPos.x = e.clientX;
@@ -844,11 +818,6 @@
                 refreshMaterials();
             });
 
-
-            viewport.addEventListener('contextmenu', onContextMenu);
-            window.addEventListener('click', hideContextMenu);
-            document.getElementById('cm-hide').addEventListener('click', hideSelectedMesh);
-            document.getElementById('cm-unhide-all').addEventListener('click', unhideAllMeshes);
 
             document.getElementById('stats-header').addEventListener('click', toggleStats);
 
@@ -1026,66 +995,10 @@
             updateDataRefVisibility();
         }
 
-        // --- CONTEXT MENU LOGIC ---
-        function onContextMenu(event) {
-            event.preventDefault();
-
-            // Check if we moved significant distance (likely panning)
-            const dx = event.clientX - mouseDownPos.x;
-            const dy = event.clientY - mouseDownPos.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > 5) return; // Ignore if moved more than 5 pixels
-
-            // Try to select mesh under cursor
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-
-            // Filter out selection helpers
-            const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => !i.object._isSelectionHelper);
-            const hit = intersects.find(i => {
-                if (i.object.type !== 'Mesh') return false;
-                let curr = i.object;
-                while (curr && curr !== scene) {
-                    if (!curr.visible) return false;
-                    curr = curr.parent;
-                }
-                return true;
-            });
-
-            if (hit) {
-                if (!selectedMeshes.includes(hit.object)) {
-                    selectMesh(hit.object, event.shiftKey);
-                }
-            } else {
-                // User said deselecting shouldn't happen on right click
-                // So we do nothing here to keep current selection
-            }
-
-            const menu = document.getElementById('context-menu');
-            const hideItem = document.getElementById('cm-hide');
-
-            if (selectedMeshes.length > 0) {
-                hideItem.classList.remove('disabled');
-            } else {
-                hideItem.classList.add('disabled');
-            }
-
-            menu.style.display = 'block';
-            menu.style.left = `${event.clientX}px`;
-            menu.style.top = `${event.clientY}px`;
-        }
-
-        function hideContextMenu() {
-            document.getElementById('context-menu').style.display = 'none';
-        }
-
         function hideSelectedMesh() {
             if (selectedMeshes.length > 0) {
                 selectedMeshes.forEach(m => m.visible = false);
                 deselectMesh();
-                hideContextMenu();
             }
         }
 
@@ -1110,7 +1023,6 @@
                 obj.div.style.opacity = '1';
             });
             soloModeObject = null;
-            hideContextMenu();
         }
 
         function resetViewer() {
