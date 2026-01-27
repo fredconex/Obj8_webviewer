@@ -705,7 +705,8 @@
             "imports": {
                 "three": "https://unpkg.com/three@0.172.0/build/three.module.js",
                 "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
-                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js",
+                "three/addons/loaders/DDSLoader.js": "https://unpkg.com/three@0.172.0/examples/jsm/loaders/DDSLoader.js"
             }
         }
     </script>
@@ -721,7 +722,7 @@
                     <label class="btn"
                         style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">
                         <span>Import</span>
-                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr" multiple
+                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple
                             style="display:none">
                     </label>
                     <button class="btn btn-danger" id="clear-btn" name="clear-btn"
@@ -840,8 +841,8 @@
             <p>Drag & Drop one or multiple .OBJ files</p>
             <label for="file-input" class="btn" style="width: auto; display: inline-block; margin-top:15px;">
                 Browse Files
-                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr" multiple
-                    style="display:none">
+                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds"
+                    multiple style="display:none">
             </label>
         </div>
     </div>
@@ -851,6 +852,7 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
         import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        import { DDSLoader } from 'three/addons/loaders/DDSLoader.js';
         import GUI from 'lil-gui';
 
         // --- GLOBALS ---
@@ -1321,6 +1323,7 @@
 
             const fileList = Array.from(files);
             const texLoader = new THREE.TextureLoader();
+            const ddsLoader = new DDSLoader();
 
             // 0. Process HDRs
             const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
@@ -1331,24 +1334,36 @@
             }
 
             // 1. Identify and load images first
-            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp)$/i.test(f.name));
+            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp|dds)$/i.test(f.name));
             const texPromises = imgFiles.map(f => {
                 return new Promise((resolve) => {
                     const url = URL.createObjectURL(f);
-                    texLoader.load(url, (tex) => {
+                    const isDDS = f.name.toLowerCase().endsWith('.dds');
+                    const loader = isDDS ? ddsLoader : texLoader;
+
+                    loader.load(url, (tex) => {
                         const isNormalMap = f.name.toLowerCase().includes('_nrm');
                         const isMatMap = f.name.toLowerCase().includes('_mat');
                         tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
                         tex.name = f.name.toLowerCase();
-                        // X-Plane OBJ8 uses standard UVs where 0,0 is bottom-left
-                        // Three.js flipY=true (default) means 0 is bottom
-                        tex.flipY = true;
-                        tex.wrapS = THREE.RepeatWrapping;
-                        tex.wrapT = THREE.RepeatWrapping;
+
+                        if (!isDDS) {
+                            // Standard images need flipping to match OpenGL UVs
+                            tex.flipY = true;
+                        } else {
+                            // DDS textures often come in inverted Y compared to WebGL/Three.js expectations
+                            // and compressed textures generally don't support .flipY
+                            tex.wrapS = THREE.RepeatWrapping;
+                            tex.wrapT = THREE.RepeatWrapping;
+                            tex.repeat.y = -1;
+                            tex.offset.y = 1;
+                        }
+
                         loadedTextures.set(f.name.toLowerCase(), tex);
                         URL.revokeObjectURL(url);
                         resolve();
-                    }, undefined, () => {
+                    }, undefined, (err) => {
+                        console.warn(`Error loading texture ${f.name}:`, err);
                         URL.revokeObjectURL(url);
                         resolve();
                     });
@@ -1433,9 +1448,9 @@
                 try {
                     if (cmd === 'VT') {
                         vertices.push({
-                            x: parseFloat(tokens[1]), y: parseFloat(tokens[2]), z: parseFloat(tokens[3]),
-                            nx: parseFloat(tokens[4]), ny: parseFloat(tokens[5]), nz: parseFloat(tokens[6]),
-                            u: parseFloat(tokens[7]), v: parseFloat(tokens[8])
+                            x: parseFloat(tokens[1]) || 0, y: parseFloat(tokens[2]) || 0, z: parseFloat(tokens[3]) || 0,
+                            nx: parseFloat(tokens[4]) || 0, ny: parseFloat(tokens[5]) || 0, nz: parseFloat(tokens[6]) || 0,
+                            u: parseFloat(tokens[7]) || 0, v: parseFloat(tokens[8]) || 0
                         });
                     }
                     else if (cmd.startsWith('IDX')) {
@@ -1962,9 +1977,10 @@
                     const low = name.toLowerCase();
                     const candidates = [
                         low,
-                        low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp",
+                        low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp", low + ".dds",
                         low.replace(/\.[^/.]+$/, "") + ".png",
-                        low.replace(/\.[^/.]+$/, "") + ".jpg"
+                        low.replace(/\.[^/.]+$/, "") + ".jpg",
+                        low.replace(/\.[^/.]+$/, "") + ".dds"
                     ];
                     for (const c of candidates) {
                         if (loadedTextures.has(c)) return loadedTextures.get(c);
