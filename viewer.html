@@ -734,7 +734,7 @@
             scene.add(camera);
 
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
+            controls.enableDamping = false;
 
             rootGroup = new THREE.Group();
             scene.add(rootGroup);
@@ -1226,35 +1226,78 @@
                         }
                     }
                     else if (cmd === 'ANIM_trans_begin') {
-                        const dref = tokens[1];
-                        currentAnimKey = { type: 'translate', dref: dref, keys: [], group: createWrapperGroup(groupStack) };
+                        const dref = tokens[1]; // Might be undefined
+                        currentAnimKey = { 
+                            type: 'translate', 
+                            dref: dref, 
+                            isStatic: !dref, // Flag as static if no DataRef
+                            keys: [], 
+                            group: createWrapperGroup(groupStack) 
+                        };
                     }
                     else if (cmd === 'ANIM_rotate_begin') {
                         const axis = new THREE.Vector3(parseFloat(tokens[1]), parseFloat(tokens[2]), parseFloat(tokens[3])).normalize();
-                        const dref = tokens[4];
-                        currentAnimKey = { type: 'rotate', dref: dref, axis: axis, keys: [], group: createWrapperGroup(groupStack) };
+                        const dref = tokens[4]; // Might be undefined
+                        currentAnimKey = { 
+                            type: 'rotate', 
+                            dref: dref, 
+                            axis: axis, 
+                            isStatic: !dref, // Flag as static if no DataRef
+                            keys: [], 
+                            group: createWrapperGroup(groupStack) 
+                        };
                         addSkeletonHelper(currentAnimKey.group, 0xff00ff, 0.1);
                     }
                     else if (cmd.endsWith('_key')) {
                         if (currentAnimKey) {
                             const val = parseFloat(tokens[1]);
-                            registerDataRef(currentAnimKey.dref, val);
-                            if (currentAnimKey.type === 'translate') currentAnimKey.keys.push({ val: val, pos: new THREE.Vector3(parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4])) });
-                            else currentAnimKey.keys.push({ val: val, angle: parseFloat(tokens[2]) });
+                            // Only register DataRef if it exists (not static)
+                            if (!currentAnimKey.isStatic) {
+                                registerDataRef(currentAnimKey.dref, val);
+                            }
+                            
+                            if (currentAnimKey.type === 'translate') {
+                                currentAnimKey.keys.push({ 
+                                    val: val, 
+                                    pos: new THREE.Vector3(parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4])) 
+                                });
+                            } else {
+                                currentAnimKey.keys.push({ 
+                                    val: val, 
+                                    angle: parseFloat(tokens[2]) 
+                                });
+                            }
                         }
                     }
                     else if (cmd.endsWith('_end')) {
                         if (currentAnimKey) {
-                            animationControllers.push({ type: currentAnimKey.type, target: currentAnimKey.group, dref: currentAnimKey.dref, axis: currentAnimKey.axis, keys: currentAnimKey.keys });
+                            if (currentAnimKey.isStatic) {
+                                // STATIC: Calculate transform for default value 0 and apply immediately
+                                // We assume input is 0 (standard default for un-driven animations)
+                                const staticVal = interpolate(0, currentAnimKey.keys);
+                                
+                                if (staticVal !== null) {
+                                    if (currentAnimKey.type === 'translate') {
+                                        currentAnimKey.group.position.copy(staticVal);
+                                    } else if (currentAnimKey.type === 'rotate') {
+                                        currentAnimKey.group.quaternion.setFromAxisAngle(
+                                            currentAnimKey.axis, 
+                                            staticVal * (Math.PI / 180)
+                                        );
+                                    }
+                                }
+                                // We do NOT push to animationControllers, so it won't appear in the list
+                            } else {
+                                // DYNAMIC: Push to controllers
+                                animationControllers.push({ 
+                                    type: currentAnimKey.type, 
+                                    target: currentAnimKey.group, 
+                                    dref: currentAnimKey.dref, 
+                                    axis: currentAnimKey.axis, 
+                                    keys: currentAnimKey.keys 
+                                });
+                            }
                             currentAnimKey = null;
-                        }
-                    }
-                    else if (cmd === 'ANIM_hide' || cmd === 'ANIM_show') {
-                        if (tokens.length >= 4) {
-                            const v1 = parseFloat(tokens[1]), v2 = parseFloat(tokens[2]), dref = tokens[3];
-                            registerDataRef(dref, v1, v2);
-                            const wrapper = createWrapperGroup(groupStack);
-                            animationControllers.push({ type: cmd === 'ANIM_hide' ? 'hide' : 'show', target: wrapper, dref: dref, min: v1, max: v2 });
                         }
                     }
                 } catch (e) {
