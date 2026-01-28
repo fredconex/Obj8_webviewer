@@ -1403,6 +1403,9 @@
                         if (!isDDS) {
                             // Standard images need flipping to match OpenGL UVs
                             tex.flipY = true;
+                            // Enable tiling for standard textures
+                            tex.wrapS = THREE.RepeatWrapping;
+                            tex.wrapT = THREE.RepeatWrapping;
                         } else {
                             // DDS textures often come in inverted Y compared to WebGL/Three.js expectations
                             // and compressed textures generally don't support .flipY
