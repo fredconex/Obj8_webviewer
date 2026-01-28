@@ -2023,29 +2023,23 @@
                     }
                 });
 
-                // Auto-Expand Range on Text Input
+                // Allow out-of-bounds input values
                 setTimeout(() => {
                     const input = ctrl.domElement.querySelector('input');
                     if (input) {
-                        input.addEventListener('input', (e) => {
-                            const val = parseFloat(e.target.value);
+                        let rawInput = input.value;
+                        input.addEventListener('input', (e) => { rawInput = e.target.value; });
+                        input.addEventListener('change', () => {
+                            const val = parseFloat(rawInput);
                             if (!isNaN(val)) {
-                                let changed = false;
-                                if (val > ctrl._max) { ctrl.max(val); changed = true; }
-                                if (val < ctrl._min) { ctrl.min(val); changed = true; }
-
-                                if (changed && ctrl._ticks) {
-                                    // Update ticks positions
-                                    ctrl._ticks.forEach(t => {
-                                        const pct = (t.val - ctrl._min) / (ctrl._max - ctrl._min) * 100;
-                                        t.el.style.left = pct + '%';
-                                        t.el.style.display = (pct >= 0 && pct <= 100) ? 'block' : 'none';
-                                    });
-                                }
+                                guiData[name] = val;
+                                ctrl.updateDisplay();
                             }
                         });
                     }
                 }, 10);
+
+
 
                 // Add click-to-copy
                 setTimeout(() => {
