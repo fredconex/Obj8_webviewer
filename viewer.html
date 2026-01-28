@@ -1655,9 +1655,9 @@
                         } else {
                             const wrapper = createWrapperGroup(groupStack);
                             const dref = tokens[tokens.length - 1];
-                            const v1 = parseFloat(tokens[1]), v2 = parseFloat(tokens[2]);
-                            const p1 = new THREE.Vector3(parseFloat(tokens[3]), parseFloat(tokens[4]), parseFloat(tokens[5]));
-                            const p2 = new THREE.Vector3(parseFloat(tokens[6]), parseFloat(tokens[7]), parseFloat(tokens[8]));
+                            const v1 = parseFloat(tokens[7]), v2 = parseFloat(tokens[8]);
+                            const p1 = new THREE.Vector3(parseFloat(tokens[1]), parseFloat(tokens[2]), parseFloat(tokens[3]));
+                            const p2 = new THREE.Vector3(parseFloat(tokens[4]), parseFloat(tokens[5]), parseFloat(tokens[6]));
                             registerDataRef(dref, v1, v2);
                             animationControllers.push({ type: 'translate', target: wrapper, dref: dref, keys: [{ val: v1, pos: p1 }, { val: v2, pos: p2 }] });
                             addSkeletonHelper(wrapper, 0x00ff00, 0.1);
