@@ -978,7 +978,7 @@
         let loadedObjects = [];
         let soloObjects = new Set(); // Multi-select Set
         let isShiftDown = false; // Global Shift Tracking
-        let isCtrlDown = false; // Global Ctrl Tracking
+        let isSpaceDown = false; // Global Space Tracking
 
         // Resources
         let loadedTextures = new Map();
@@ -1084,7 +1084,10 @@
             window.addEventListener('resize', onResize);
             window.addEventListener('keydown', e => {
                 if (e.key === 'Shift') isShiftDown = true;
-                if (e.key === 'Control') isCtrlDown = true;
+                if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
+                    isSpaceDown = true;
+                    e.preventDefault();
+                }
                 if (e.key.toLowerCase() === 'f' && document.activeElement.tagName !== 'INPUT') {
                     centerCamera();
                 }
@@ -1100,11 +1103,11 @@
             });
             window.addEventListener('keyup', e => {
                 if (e.key === 'Shift') isShiftDown = false;
-                if (e.key === 'Control') isCtrlDown = false;
+                if (e.code === 'Space') isSpaceDown = false;
             });
             window.addEventListener('blur', () => {
                 isShiftDown = false;
-                isCtrlDown = false;
+                isSpaceDown = false;
             });
             viewport.addEventListener('mousedown', (e) => {
                 mouseDownPos.x = e.clientX;
@@ -1954,8 +1957,8 @@
                 min -= margin; max += margin;
 
                 // Ensure 0 is included in the range
-                if (0 < min) min = 0;
-                if (0 > max) max = 0;
+                if (0 < min) min = -0.5;
+                if (0 > max) max = 0.5;
 
                 // 1. Collect Keyframes per DataRef
                 const drefKeys = new Map();
@@ -1980,7 +1983,9 @@
                 const ctrl = gui.add(guiData, name, min, max).name(name).listen();
 
                 // Keyframe Snapping & Ticks
-                const keys = drefKeys.has(name) ? Array.from(drefKeys.get(name)).sort((a, b) => a - b) : [];
+                const keys = drefKeys.has(name) ? Array.from(drefKeys.get(name)) : [];
+                if (!keys.includes(0)) keys.push(0); // Ensure 0 is always a tick
+                keys.sort((a, b) => a - b);
 
                 // Inject Ticks
                 if (keys.length > 0) {
@@ -2554,7 +2559,7 @@
                 if (ctrl.type === 'translate') ctrl.target.position.copy(interpolate(val, ctrl.keys));
                 else if (ctrl.type === 'rotate') ctrl.target.quaternion.setFromAxisAngle(ctrl.axis, interpolate(val, ctrl.keys) * (Math.PI / 180));
                 else if (ctrl.type === 'hide') {
-                    if (isCtrlDown) ctrl.target.visible = true;
+                    if (isSpaceDown) ctrl.target.visible = true;
                     else {
                         if (ctrl.min <= ctrl.max) {
                             ctrl.target.visible = !(val >= ctrl.min && val <= ctrl.max);
@@ -2565,7 +2570,7 @@
                     }
                 }
                 else if (ctrl.type === 'show') {
-                    if (isCtrlDown) ctrl.target.visible = true;
+                    if (isSpaceDown) ctrl.target.visible = true;
                     else {
                         if (ctrl.min <= ctrl.max) {
                             ctrl.target.visible = (val >= ctrl.min && val <= ctrl.max);
