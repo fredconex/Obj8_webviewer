@@ -767,6 +767,12 @@
             text-align: center;
             font-family: 'Consolas', monospace;
         }
+
+        /* --- VIEWPORT BLUR DURING LOADING --- */
+        #viewport.loading {
+            filter: blur(8px);
+            transition: filter 0.3s ease;
+        }
     </style>
 
     <script type="importmap">
@@ -1447,8 +1453,10 @@
             const loadingContainer = document.getElementById('loading-bar-container');
             const loadingFill = document.getElementById('loading-bar-fill');
             const loadingText = document.getElementById('loading-bar-text');
+            const viewport = document.getElementById('viewport');
 
             loadingContainer.classList.add('active');
+            viewport.classList.add('loading');
 
             // Count total files to load
             const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
@@ -1525,6 +1533,8 @@
                 parseOBJ8(text, file.name);
                 loadedFiles++;
                 updateProgress();
+                // Recenter camera after each object is loaded
+                centerCamera();
             }
 
             // 3. Finalize UI and View
@@ -1532,13 +1542,11 @@
             refreshMaterials(); // Ensure any newly loaded textures are applied to existing meshes
             updateStats();
 
-            // Hide loading bar and center camera after scene updates
+            // Hide loading bar, remove blur, and center camera after scene updates
             setTimeout(() => {
                 loadingContainer.classList.remove('active');
-                // Center camera after a brief delay to ensure all world matrices are updated
-                setTimeout(() => {
-                    centerCamera();
-                }, 100);
+                viewport.classList.remove('loading');
+                centerCamera();
             }, 500);
         }
 
@@ -2380,8 +2388,8 @@
             // Use the larger distance to ensure everything fits
             let distance = Math.max(distanceV, distanceH, size.z / 2);
 
-            // Add 20% padding for better framing
-            distance *= 1.2;
+            // Add 40% padding for better framing with more margin
+            distance *= 1.4;
 
             // Ensure minimum distance
             distance = Math.max(distance, 0.5);
