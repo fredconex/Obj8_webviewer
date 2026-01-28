@@ -929,6 +929,10 @@
                             <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
                                     Background</label></div>
                         </div>
+                        <div class="popup-section">
+                            <h3>Actions</h3>
+                            <button id="screenshot-btn" class="btn" style="margin-top: 0;">Generate Screenshot</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1052,7 +1056,7 @@
             scene.background = new THREE.Color(0x121212); // Darker background
 
             // Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
             renderer.setSize(viewport.clientWidth, viewport.clientHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1281,11 +1285,18 @@
             // Settings Popup
             const setBtn = document.getElementById('settings-btn');
             const setPop = document.getElementById('settings-popup');
+            const screenshotBtn = document.getElementById('screenshot-btn');
+
             setPop.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent interaction pass-through
             setBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 setPop.classList.toggle('hidden');
                 setBtn.classList.toggle('active', !setPop.classList.contains('hidden'));
+            });
+
+            screenshotBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                takeScreenshot();
             });
 
             // Close popup on click outside
@@ -2675,6 +2686,74 @@
 
             controls.target.copy(center);
             controls.update();
+        }
+
+        function takeScreenshot() {
+            // 1. Save current state
+            const originalBackground = scene.background;
+            const originalGridVisible = worldGrid.visible;
+            const originalAxesVisible = worldAxes.visible;
+            const skeletonStates = skeletonHelpers.map(h => h.visible);
+            
+            // Save original size/ratio
+            const originalSize = new THREE.Vector2();
+            renderer.getSize(originalSize);
+            const originalPixelRatio = renderer.getPixelRatio();
+
+            // Hide selection helpers
+            const selectedHelpers = [];
+            rootGroup.traverse(obj => {
+                if (obj._isSelectionHelper) {
+                    selectedHelpers.push({ obj, visible: obj.visible });
+                    obj.visible = false;
+                }
+            });
+
+            // 2. Prepare for high-res transparent screenshot
+            const screenshotMultiplier = 2; // 2x resolution
+            const width = originalSize.x * screenshotMultiplier;
+            const height = originalSize.y * screenshotMultiplier;
+
+            renderer.setSize(width, height, false);
+            // No need to change camera aspect if we scale proportionally, 
+            // but we must call updateProjectionMatrix if we were to change aspect.
+            
+            const originalClearAlpha = renderer.getClearAlpha();
+            scene.background = null;
+            renderer.setClearAlpha(0);
+            worldGrid.visible = false;
+            worldAxes.visible = false;
+            skeletonHelpers.forEach(h => h.visible = false);
+
+            // 3. Render
+            renderer.render(scene, camera);
+
+            // 4. Download
+            try {
+                const dataURL = renderer.domElement.toDataURL('image/png');
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                link.download = `screenshot_${timestamp}.png`;
+                link.href = dataURL;
+                link.click();
+            } catch (e) {
+                console.error("Screenshot failed:", e);
+                showToast("Screenshot failed - check console");
+            }
+
+            // 5. Restore
+            renderer.setSize(originalSize.x, originalSize.y, true);
+            renderer.setPixelRatio(originalPixelRatio);
+            
+            scene.background = originalBackground;
+            renderer.setClearAlpha(originalClearAlpha);
+            worldGrid.visible = originalGridVisible;
+            worldAxes.visible = originalAxesVisible;
+            skeletonHelpers.forEach((h, i) => h.visible = skeletonStates[i]);
+            selectedHelpers.forEach(s => s.obj.visible = s.visible);
+
+            // Re-render to restore view
+            renderer.render(scene, camera);
         }
 
         function filterDataRefs(e) {
