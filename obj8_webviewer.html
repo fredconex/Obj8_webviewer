@@ -2260,13 +2260,18 @@
             return wrapper;
         }
 
-        const processedMatCache = new Map();
-        const processedNormalMetalnessCache = new Map();
-        const processedNormalCache = new Map();
+        const processedTextureCache = new Map();
 
-        function getProcessedMatTexture(texture) {
+        /**
+         * Generic texture processor for X-Plane OBJ8 PBR workflows.
+         * Handles MAT maps (R=Metal, G=Gloss) and NORMAL_METALNESS (B=Metal, A=Gloss).
+         * @param {THREE.Texture} texture Source texture
+         * @param {'mat'|'normal'|'normal_metalness'} type Processing mode
+         */
+        function getProcessedTexture(texture, type) {
             if (!texture || !texture.image || texture.isCanvasTexture) return texture;
-            if (processedMatCache.has(texture)) return processedMatCache.get(texture);
+            const cacheKey = `${texture.uuid}_${type}`;
+            if (processedTextureCache.has(cacheKey)) return processedTextureCache.get(cacheKey);
 
             const img = texture.image;
             const canvas = document.createElement('canvas');
@@ -2279,105 +2284,35 @@
             const data = imageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
-                const f0 = data[i];        // Red channel: Metalness (f0)
-                const gloss = data[i + 1];  // Green channel: Glossiness
-
-                // Three.js MeshStandardMaterial expects:
-                // Metalness in BLUE channel
-                // Roughness in GREEN channel
-                data[i + 2] = f0;              // Move Red to Blue (Metalness)
-                data[i + 1] = 255 - gloss;     // Invert Green (Glossiness -> Roughness)
-                data[i] = 255;                 // Red channel unused, set to white
-                data[i + 3] = 255;             // Ensure alpha is full
+                if (type === 'mat') {
+                    // X-Plane MAT: R=Metalness, G=Glossiness
+                    const metal = data[i];
+                    const gloss = data[i + 1];
+                    data[i + 2] = metal;          // Metalness -> Blue
+                    data[i + 1] = 255 - gloss;    // Roughness -> Green (1-Gloss)
+                    data[i] = 255;                // Red unused
+                } 
+                else if (type === 'normal_metalness') {
+                    // X-Plane NORMAL_METALNESS: B=Metalness, A=Glossiness
+                    const metal = data[i + 2];
+                    const gloss = data[i + 3];
+                    data[i + 2] = metal;          // Metalness -> Blue
+                    data[i + 1] = 255 - gloss;    // Roughness -> Green (1-Gloss)
+                    data[i] = 255;                // Red unused
+                }
+                else if (type === 'normal') {
+                    // Clean Blue channel if it might contain Metalness data
+                    data[i + 2] = 255;
+                }
+                data[i + 3] = 255; // Ensure full opacity
             }
 
             ctx.putImageData(imageData, 0, 0);
             const newTex = new THREE.CanvasTexture(canvas);
-            newTex.name = texture.name + "_processed";
-            newTex.flipY = texture.flipY;
-            newTex.wrapS = texture.wrapS;
-            newTex.wrapT = texture.wrapT;
-            newTex.minFilter = texture.minFilter;
-            newTex.magFilter = texture.magFilter;
+            newTex.name = `${texture.name}_${type}`;
+            ['flipY', 'wrapS', 'wrapT', 'minFilter', 'magFilter'].forEach(p => newTex[p] = texture[p]);
 
-            processedMatCache.set(texture, newTex);
-            return newTex;
-        }
-
-        function getProcessedNormalMap(texture) {
-            if (!texture || !texture.image || texture.isCanvasTexture) return texture;
-            if (processedNormalCache.has(texture)) return processedNormalCache.get(texture);
-
-            const img = texture.image;
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-                // Set Blue channel to 255 to ensure Z normal is 1.0 
-                // when it's being shared with Metalness
-                data[i + 2] = 255; 
-            }
-
-            ctx.putImageData(imageData, 0, 0);
-            const newTex = new THREE.CanvasTexture(canvas);
-            newTex.name = texture.name + "_norm_fixed";
-            newTex.flipY = texture.flipY;
-            newTex.wrapS = texture.wrapS;
-            newTex.wrapT = texture.wrapT;
-            newTex.minFilter = texture.minFilter;
-            newTex.magFilter = texture.magFilter;
-
-            processedNormalCache.set(texture, newTex);
-            return newTex;
-        }
-
-        function getProcessedNormalMetalnessTexture(texture) {
-            if (!texture || !texture.image || texture.isCanvasTexture) return texture;
-            if (processedNormalMetalnessCache.has(texture)) return processedNormalMetalnessCache.get(texture);
-
-            const img = texture.image;
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-                // X-Plane NORMAL_METALNESS format:
-                // Red/Green = Normal Map (X/Y)
-                // Blue = Metalness
-                // Alpha = Glossiness (which is 1.0 - Roughness)
-                const metal = data[i + 2]; // Blue channel: Metalness
-                const gloss = data[i + 3]; // Alpha channel: Glossiness
-
-                // Three.js MeshStandardMaterial expects:
-                // Metalness in BLUE channel
-                // Roughness in GREEN channel
-                data[i + 2] = metal;              // Metalness in Blue
-                data[i + 1] = 255 - gloss;        // Invert Glossiness to get Roughness in Green
-                data[i] = 255;                    // Red unused
-                data[i + 3] = 255;                // Set alpha to full for the new map
-            }
-
-            ctx.putImageData(imageData, 0, 0);
-            const newTex = new THREE.CanvasTexture(canvas);
-            newTex.name = texture.name + "_pbr_from_norm";
-            newTex.flipY = texture.flipY;
-            newTex.wrapS = texture.wrapS;
-            newTex.wrapT = texture.wrapT;
-            newTex.minFilter = texture.minFilter;
-            newTex.magFilter = texture.magFilter;
-
-            processedNormalMetalnessCache.set(texture, newTex);
+            processedTextureCache.set(cacheKey, newTex);
             return newTex;
         }
 
@@ -2385,23 +2320,28 @@
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
             const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
-            // Removed settings from cacheKey to allow property updates without cache invalidation
             const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${useNormalMetalness}`;
 
             if (!materialCache.has(cacheKey)) {
                 let mat;
-                if (currentViewMode === 'albedo') {
-                    mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-                } else if (currentViewMode === 'lit_only') {
-                    mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                const standardProps = { 
+                    side: THREE.DoubleSide,
+                    transparent: false,
+                    alphaTest: 0.1
+                };
+
+                if (currentViewMode === 'albedo' || currentViewMode === 'lit_only') {
+                    mat = new THREE.MeshBasicMaterial({ color: 0xffffff, ...standardProps });
                 } else if (currentViewMode === 'normals') {
-                    mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+                    mat = new THREE.MeshNormalMaterial(standardProps);
                 } else {
                     mat = new THREE.MeshStandardMaterial({
                         name: baseName,
-                        color: 0xbbbbbb, side: THREE.DoubleSide,
-                        roughness: settings.rough, metalness: settings.metal,
-                        envMapIntensity: settings.envIntensity
+                        color: 0xbbbbbb,
+                        roughness: settings.rough, 
+                        metalness: settings.metal,
+                        envMapIntensity: settings.envIntensity,
+                        ...standardProps
                     });
                     if (currentViewMode === 'wireframe') mat.wireframe = true;
                 }
@@ -2410,64 +2350,50 @@
                     if (!name || name === "default") return null;
                     const low = name.toLowerCase();
                     const candidates = [
-                        low,
-                        low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp", low + ".dds",
+                        low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp", low + ".dds",
                         low.replace(/\.[^/.]+$/, "") + ".png",
                         low.replace(/\.[^/.]+$/, "") + ".jpg",
                         low.replace(/\.[^/.]+$/, "") + ".dds"
                     ];
-                    for (const c of candidates) {
-                        if (loadedTextures.has(c)) return loadedTextures.get(c);
-                    }
+                    for (const c of candidates) if (loadedTextures.has(c)) return loadedTextures.get(c);
                     return null;
                 };
 
-                // Shared Material Logic for Material, Solid, and Wireframe
-                if (currentViewMode === 'material' || currentViewMode === 'solid' || currentViewMode === 'wireframe') {
-                    // 1. Albedo & Lit (Only in material mode)
+                if (['material', 'solid', 'wireframe'].includes(currentViewMode)) {
+                    // 1. Albedo & Lit
                     if (currentViewMode === 'material') {
                         const tex = findTex(baseName);
                         if (tex) { mat.map = tex; mat.color.set(0xffffff); }
-
                         const ltex = findTex(litBase);
                         if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = settings.lit; }
                     } else {
                         mat.color.set(0x888888);
                     }
 
-                    // 2. Normals
-                    let rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
-                    let ntex = findTex(normBase);
-                    if (!ntex) ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
+                    // 2. Normals & PBR
+                    const rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
+                    let ntex = findTex(normBase) || findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
+                    
                     if (ntex) {
-                        mat.normalMap = useNormalMetalness ? getProcessedNormalMap(ntex) : ntex;
+                        mat.normalMap = useNormalMetalness ? getProcessedTexture(ntex, 'normal') : ntex;
                         mat.normalScale.set(1, 1);
-                        // X-Plane normal maps use R and G channels for normal vector
                         ntex.colorSpace = THREE.NoColorSpace;
-                        ntex.channel = 0; // R channel
                     }
 
-                    // 3. PBR Maps (MAT)
-                    // X-Plane MAT format: R=f0 (Metalness), G=Glossiness
+                    // 3. PBR Maps (MAT or NORMAL_METALNESS)
                     const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
                     if (mtex) {
-                        const processedTex = getProcessedMatTexture(mtex);
-                        mat.metalnessMap = processedTex;
-                        mat.roughnessMap = processedTex;
-                        
-                        // Set factors to 1.0 so the processed map has full control
-                        mat.metalness = 1.0;
-                        mat.roughness = 1.0;
-
-                        if (!mat.map) mat.color.set(0xffffff);
+                        const pTex = getProcessedTexture(mtex, 'mat');
+                        mat.metalnessMap = mat.roughnessMap = pTex;
+                        mat.metalness = mat.roughness = 1.0;
                     } else if (useNormalMetalness && ntex) {
-                        const processedTex = getProcessedNormalMetalnessTexture(ntex);
-                        mat.metalnessMap = processedTex;
-                        mat.roughnessMap = processedTex;
-                        mat.metalness = 1.0;
-                        mat.roughness = 1.0;
-                        if (!mat.map) mat.color.set(0xffffff);
+                        const pTex = getProcessedTexture(ntex, 'normal_metalness');
+                        mat.metalnessMap = mat.roughnessMap = pTex;
+                        mat.metalness = mat.roughness = 1.0;
                     }
+
+                    if (!mat.map && (mtex || (useNormalMetalness && ntex))) mat.color.set(0xffffff);
+
                 } else if (currentViewMode === 'albedo') {
                     const tex = findTex(baseName);
                     if (tex) mat.map = tex;
