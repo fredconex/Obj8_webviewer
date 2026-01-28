@@ -711,6 +711,62 @@
             font-size: 18px;
             color: #888;
         }
+
+        /* --- LOADING BAR --- */
+        #loading-bar-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 20px;
+            z-index: 300;
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        #loading-bar-container.active {
+            display: flex;
+        }
+
+        #loading-bar-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #loading-bar-track {
+            width: 100%;
+            height: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #loading-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        #loading-bar-text {
+            font-size: 0.75rem;
+            color: #aaa;
+            text-align: center;
+            font-family: 'Consolas', monospace;
+        }
     </style>
 
     <script type="importmap">
@@ -862,6 +918,15 @@
                     multiple style="display:none">
             </label>
         </div>
+    </div>
+
+    <!-- LOADING BAR -->
+    <div id="loading-bar-container">
+        <div id="loading-bar-title">Loading Assets</div>
+        <div id="loading-bar-track">
+            <div id="loading-bar-fill"></div>
+        </div>
+        <div id="loading-bar-text">0 / 0</div>
     </div>
 
     <script type="module">
@@ -1378,16 +1443,38 @@
             const texLoader = new THREE.TextureLoader();
             const ddsLoader = new DDSLoader();
 
-            // 0. Process HDRs
+            // Show loading bar
+            const loadingContainer = document.getElementById('loading-bar-container');
+            const loadingFill = document.getElementById('loading-bar-fill');
+            const loadingText = document.getElementById('loading-bar-text');
+
+            loadingContainer.classList.add('active');
+
+            // Count total files to load
             const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
+            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp|dds)$/i.test(f.name));
+            const objFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.obj'));
+            const totalFiles = hdrFiles.length + imgFiles.length + objFiles.length;
+            let loadedFiles = 0;
+
+            const updateProgress = () => {
+                const percent = (loadedFiles / totalFiles) * 100;
+                loadingFill.style.width = percent + '%';
+                loadingText.textContent = `${loadedFiles} / ${totalFiles}`;
+            };
+
+            updateProgress();
+
+            // 0. Process HDRs
             for (const f of hdrFiles) {
                 const url = URL.createObjectURL(f);
                 await loadHDRI(url);
                 URL.revokeObjectURL(url);
+                loadedFiles++;
+                updateProgress();
             }
 
             // 1. Identify and load images first
-            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp|dds)$/i.test(f.name));
             const texPromises = imgFiles.map(f => {
                 return new Promise((resolve) => {
                     const url = URL.createObjectURL(f);
@@ -1417,10 +1504,14 @@
 
                         loadedTextures.set(f.name.toLowerCase(), tex);
                         URL.revokeObjectURL(url);
+                        loadedFiles++;
+                        updateProgress();
                         resolve();
                     }, undefined, (err) => {
                         console.warn(`Error loading texture ${f.name}:`, err);
                         URL.revokeObjectURL(url);
+                        loadedFiles++;
+                        updateProgress();
                         resolve();
                     });
                 });
@@ -1429,18 +1520,26 @@
             await Promise.all(texPromises);
 
             // 2. Process OBJs
-            for (const file of fileList) {
-                if (file.name.toLowerCase().endsWith('.obj')) {
-                    const text = await file.text();
-                    parseOBJ8(text, file.name);
-                }
+            for (const file of objFiles) {
+                const text = await file.text();
+                parseOBJ8(text, file.name);
+                loadedFiles++;
+                updateProgress();
             }
 
             // 3. Finalize UI and View
             buildGUI();
             refreshMaterials(); // Ensure any newly loaded textures are applied to existing meshes
             updateStats();
-            centerCamera();
+
+            // Hide loading bar and center camera after scene updates
+            setTimeout(() => {
+                loadingContainer.classList.remove('active');
+                // Center camera after a brief delay to ensure all world matrices are updated
+                setTimeout(() => {
+                    centerCamera();
+                }, 100);
+            }, 500);
         }
 
         // --- PARSER ---
@@ -2219,6 +2318,9 @@
         function centerCamera() {
             if (rootGroup.children.length === 0) return;
 
+            // Force update of all world matrices before computing bounds
+            rootGroup.updateMatrixWorld(true);
+
             const box = new THREE.Box3();
             let hasBounds = false;
 
@@ -2231,9 +2333,9 @@
                 });
                 hasBounds = true;
             } else {
-                // Center on all visible meshes
+                // Center on all visible meshes (excluding selection helpers)
                 rootGroup.traverse(obj => {
-                    if (obj.isMesh) {
+                    if (obj.isMesh && !obj._isSelectionHelper) {
                         // Check if object and all ancestors (up to rootGroup) are visible
                         let curr = obj;
                         let visible = true;
@@ -2260,20 +2362,33 @@
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
 
-            // Calculate distance needed to fit the box
+            // Calculate distance needed to fit the box in both horizontal and vertical FOV
             const maxDim = Math.max(size.x, size.y, size.z);
             if (isNaN(maxDim) || maxDim <= 0) return;
 
+            // Account for both vertical and horizontal FOV
             const fov = camera.fov * (Math.PI / 180);
-            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraZ = Math.max(cameraZ * 1.5, 0.5); // Add padding and ensure minimum distance
+            const aspect = camera.aspect;
 
-            // Move camera along its current view direction
-            const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
+            // Calculate required distance for vertical FOV
+            const distanceV = (size.y / 2) / Math.tan(fov / 2);
 
-            const newPos = center.clone().add(direction.multiplyScalar(-cameraZ));
-            camera.position.copy(newPos);
+            // Calculate required distance for horizontal FOV
+            const fovH = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+            const distanceH = (size.x / 2) / Math.tan(fovH / 2);
+
+            // Use the larger distance to ensure everything fits
+            let distance = Math.max(distanceV, distanceH, size.z / 2);
+
+            // Add 20% padding for better framing
+            distance *= 1.2;
+
+            // Ensure minimum distance
+            distance = Math.max(distance, 0.5);
+
+            // Position camera at a nice 3/4 view angle from the center
+            const offset = new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(distance);
+            camera.position.copy(center).add(offset);
 
             controls.target.copy(center);
             controls.update();
