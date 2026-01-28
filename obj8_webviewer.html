@@ -887,14 +887,16 @@
             <!-- TOOLBAR -->
             <div id="viewport-toolbar" class="hidden-ui">
                 <div class="toolbar-group">
-                    <select id="view-mode-select" class="toolbar-select" title="View Mode">
-                        <option value="material">Material</option>
-                        <option value="solid">Solid</option>
-                        <option value="albedo">Albedo</option>
-                        <option value="lit_only">Lit Only</option>
-                        <option value="normals">Normals</option>
-                        <option value="wireframe">Wireframe</option>
-                    </select>
+        <select id="view-mode-select" class="toolbar-select" title="View Mode">
+            <option value="material" selected>Material</option>
+            <option value="solid">Solid</option>
+            <option value="albedo">Albedo</option>
+            <option value="roughness">Roughness</option>
+            <option value="metallic">Metallic</option>
+            <option value="lit_only">Lit Only</option>
+            <option value="normals">Normals</option>
+            <option value="wireframe">Wireframe</option>
+        </select>
                 </div>
 
                 <div class="toolbar-separator"></div>
@@ -2454,7 +2456,7 @@
          * Generic texture processor for X-Plane OBJ8 PBR workflows.
          * Handles MAT maps (R=Metal, G=Gloss) and NORMAL_METALNESS (B=Metal, A=Gloss).
          * @param {THREE.Texture} texture Source texture
-         * @param {'mat'|'normal'|'normal_metalness'} type Processing mode
+         * @param {'mat'|'normal'|'normal_metalness'|'roughness_mat'|'metallic_mat'|'roughness_nm'|'metallic_nm'} type Processing mode
          */
         function getProcessedTexture(texture, type) {
             if (!texture || !texture.image || texture.isCanvasTexture) return texture;
@@ -2492,12 +2494,29 @@
                     // Clean Blue channel if it might contain Metalness data
                     data[i + 2] = 255;
                 }
+                else if (type === 'roughness_mat') {
+                    const gloss = data[i + 1];
+                    data[i] = data[i + 1] = data[i + 2] = 255 - gloss;
+                }
+                else if (type === 'metallic_mat') {
+                    const metal = data[i];
+                    data[i] = data[i + 1] = data[i + 2] = metal;
+                }
+                else if (type === 'roughness_nm') {
+                    const gloss = data[i + 3];
+                    data[i] = data[i + 1] = data[i + 2] = 255 - gloss;
+                }
+                else if (type === 'metallic_nm') {
+                    const metal = data[i + 2];
+                    data[i] = data[i + 1] = data[i + 2] = metal;
+                }
                 data[i + 3] = 255; // Ensure full opacity
             }
 
             ctx.putImageData(imageData, 0, 0);
             const newTex = new THREE.CanvasTexture(canvas);
             newTex.name = `${texture.name}_${type}`;
+            newTex.colorSpace = THREE.NoColorSpace;
             ['flipY', 'wrapS', 'wrapT', 'minFilter', 'magFilter'].forEach(p => newTex[p] = texture[p]);
 
             processedTextureCache.set(cacheKey, newTex);
@@ -2521,7 +2540,7 @@
                     polygonOffsetUnits: -polyOS
                 };
 
-                if (currentViewMode === 'albedo' || currentViewMode === 'lit_only') {
+                if (['albedo', 'lit_only', 'roughness', 'metallic'].includes(currentViewMode)) {
                     mat = new THREE.MeshBasicMaterial({ color: 0xffffff, ...standardProps });
                 } else if (currentViewMode === 'normals') {
                     mat = new THREE.MeshNormalMaterial(standardProps);
@@ -2550,15 +2569,17 @@
                     return null;
                 };
 
-                if (['material', 'solid', 'wireframe'].includes(currentViewMode)) {
-                    // 1. Albedo & Lit
-                    if (currentViewMode === 'material') {
-                        const tex = findTex(baseName);
-                        if (tex) { mat.map = tex; mat.color.set(0xffffff); }
-                        const ltex = findTex(litBase);
-                        if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = settings.lit; }
-                    } else {
-                        mat.color.set(0x888888);
+                if (['material', 'solid', 'wireframe', 'normals'].includes(currentViewMode)) {
+                    // 1. Albedo & Lit (Only for non-normals modes)
+                    if (['material', 'solid', 'wireframe'].includes(currentViewMode)) {
+                        if (currentViewMode === 'material') {
+                            const tex = findTex(baseName);
+                            if (tex) { mat.map = tex; mat.color.set(0xffffff); }
+                            const ltex = findTex(litBase);
+                            if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = settings.lit; }
+                        } else {
+                            mat.color.set(0x888888);
+                        }
                     }
 
                     // 2. Normals & PBR
@@ -2571,19 +2592,20 @@
                         ntex.colorSpace = THREE.NoColorSpace;
                     }
 
-                    // 3. PBR Maps (MAT or NORMAL_METALNESS)
-                    const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
-                    if (mtex) {
-                        const pTex = getProcessedTexture(mtex, 'mat');
-                        mat.metalnessMap = mat.roughnessMap = pTex;
-                        mat.metalness = mat.roughness = 1.0;
-                    } else if (useNormalMetalness && ntex) {
-                        const pTex = getProcessedTexture(ntex, 'normal_metalness');
-                        mat.metalnessMap = mat.roughnessMap = pTex;
-                        mat.metalness = mat.roughness = 1.0;
+                    // 3. PBR Maps (MAT or NORMAL_METALNESS) - Only for standard materials
+                    if (mat.isMeshStandardMaterial) {
+                        const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
+                        if (mtex) {
+                            const pTex = getProcessedTexture(mtex, 'mat');
+                            mat.metalnessMap = mat.roughnessMap = pTex;
+                            mat.metalness = mat.roughness = 1.0;
+                        } else if (useNormalMetalness && ntex) {
+                            const pTex = getProcessedTexture(ntex, 'normal_metalness');
+                            mat.metalnessMap = mat.roughnessMap = pTex;
+                            mat.metalness = mat.roughness = 1.0;
+                        }
+                        if (!mat.map && (mtex || (useNormalMetalness && ntex))) mat.color.set(0xffffff);
                     }
-
-                    if (!mat.map && (mtex || (useNormalMetalness && ntex))) mat.color.set(0xffffff);
 
                 } else if (currentViewMode === 'albedo') {
                     const tex = findTex(baseName);
@@ -2591,6 +2613,30 @@
                 } else if (currentViewMode === 'lit_only') {
                     const ltex = findTex(litBase);
                     if (ltex) mat.map = ltex; else mat.color.set(0x000000);
+                } else if (currentViewMode === 'roughness' || currentViewMode === 'metallic') {
+                    const rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
+                    const ntex = findTex(normBase) || findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
+                    const mtex = findTex(rootName + "_MAT") || findTex(rootName + "_mat");
+                    
+                    if (currentViewMode === 'roughness') {
+                        if (mtex) {
+                            mat.map = getProcessedTexture(mtex, 'roughness_mat');
+                        } else if (useNormalMetalness && ntex) {
+                            mat.map = getProcessedTexture(ntex, 'roughness_nm');
+                        } else {
+                            const val = settings.rough;
+                            mat.color.setRGB(val, val, val);
+                        }
+                    } else { // metallic
+                        if (mtex) {
+                            mat.map = getProcessedTexture(mtex, 'metallic_mat');
+                        } else if (useNormalMetalness && ntex) {
+                            mat.map = getProcessedTexture(ntex, 'metallic_nm');
+                        } else {
+                            const val = settings.metal;
+                            mat.color.setRGB(val, val, val);
+                        }
+                    }
                 }
 
                 materialCache.set(cacheKey, mat);
