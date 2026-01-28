@@ -1999,6 +1999,10 @@
                 ctrl.onChange(val => {
                     if (isSnapping) return;
 
+                    // Disable snapping if manually typing (input is focused)
+                    const input = ctrl.domElement.querySelector('input');
+                    if (input === document.activeElement) return;
+
                     if (!isShiftDown && keys.length > 0) {
                         // Find nearest
                         let nearest = keys[0];
