@@ -803,6 +803,10 @@
                                 <span class="material-symbols-outlined" title="Env Intensity">light_mode</span>
                                 <input type="range" id="env-intensity" min="0" max="2" step="0.1" title="Env Intensity">
                             </div>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Env Rotation">360</span>
+                                <input type="range" id="env-rotation" min="0" max="360" step="1" title="Env Rotation">
+                            </div>
                             <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
                                     Background</label></div>
                         </div>
@@ -899,6 +903,7 @@
             exposure: 1.0,
             rough: 0.5, metal: 0.2,
             envIntensity: 0.8,
+            rotation: 0,
             showBackground: true
         };
 
@@ -932,6 +937,9 @@
             pmremGenerator = new THREE.PMREMGenerator(renderer);
             scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
             scene.environmentIntensity = settings.envIntensity;
+            const rotRad = (settings.rotation || 0) * (Math.PI / 180);
+            scene.backgroundRotation.y = rotRad;
+            scene.environmentRotation.y = rotRad;
 
             // Default HDRI loading removed to avoid CORS/404 errors.
             // Users can still drop their own .hdr files.
@@ -1057,6 +1065,7 @@
             setVal('mat-metal', settings.metal);
             setVal('cam-exposure', settings.exposure);
             setVal('env-intensity', settings.envIntensity);
+            setVal('env-rotation', settings.rotation);
 
             const bind = (id, fn) => {
                 const el = document.getElementById(id);
@@ -1067,6 +1076,12 @@
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
             bind('env-intensity', e => { settings.envIntensity = parseFloat(e.target.value); scene.environmentIntensity = settings.envIntensity; });
+            bind('env-rotation', e => {
+                settings.rotation = parseFloat(e.target.value);
+                const rad = settings.rotation * (Math.PI / 180);
+                scene.backgroundRotation.y = rad;
+                scene.environmentRotation.y = rad;
+            });
 
             document.getElementById('env-bg-chk').checked = settings.showBackground;
             document.getElementById('env-bg-chk').addEventListener('change', e => {
