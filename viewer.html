@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X-Plane OBJ8 WebViewer - Dreamfoil Creations</title>
+    <title>X-Plane OBJ8 WebViewer</title>
     <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
@@ -773,6 +773,19 @@
             filter: blur(8px);
             transition: filter 0.3s ease;
         }
+
+        #branding {
+            position: absolute;
+            bottom: 10px;
+            right: 15px;
+            font-size: 0.7rem;
+            color: #555;
+            pointer-events: none;
+            z-index: 100;
+            font-family: 'Segoe UI', sans-serif;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+            user-select: none;
+        }
     </style>
 
     <script type="importmap">
@@ -900,6 +913,7 @@
                     Unhide All
                 </button>
             </div>
+            <div id="branding">WebViewer by Dreamfoil Creations</div>
         </div>
     </div>
 
