@@ -1932,7 +1932,10 @@
                 const margin = span * 0.05; // 10% total (5% each side)
                 min -= margin; max += margin;
 
-                // Set default to 0 if valid, otherwise min
+                // Ensure 0 is included in the range
+                if (0 < min) min = 0;
+                if (0 > max) max = 0;
+
                 // 1. Collect Keyframes per DataRef
                 const drefKeys = new Map();
                 animationControllers.forEach(ctrl => {
@@ -1949,7 +1952,7 @@
                 });
 
                 if (guiData[name] === undefined) {
-                    guiData[name] = (0 >= min && 0 <= max) ? 0 : range.min;
+                    guiData[name] = 0;
                 }
 
                 // Create Controller
