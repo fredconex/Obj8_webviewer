@@ -1006,9 +1006,13 @@
                     style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;" title="Hide Selected (H)">
                     Hide
                 </button>
+                <button id="isolate-sel-btn" class="icon-btn-tool"
+                    style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;" title="Isolate Selected (Shift+H)">
+                    Isolate
+                </button>
                 <button id="unhide-all-btn" class="icon-btn-tool"
                     style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;"
-                    title="Unhide All (Shift+H)">
+                    title="Unhide All (Alt+H)">
                     Unhide All
                 </button>
             </div>
@@ -1198,8 +1202,10 @@
                 }
                 // Handle hide/unhide shortcuts
                 if (e.key.toLowerCase() === 'h' && document.activeElement.tagName !== 'INPUT') {
-                    if (e.shiftKey) {
+                    if (e.altKey) {
                         unhideAllMeshes();
+                    } else if (e.shiftKey) {
+                        isolateSelectedMesh();
                     } else {
                         hideSelectedMesh();
                     }
@@ -1230,6 +1236,7 @@
             // Button Logic
             document.getElementById('recenter-btn').addEventListener('click', (e) => { e.stopPropagation(); centerCamera(); });
             document.getElementById('hide-sel-btn').addEventListener('click', (e) => { e.stopPropagation(); hideSelectedMesh(); });
+            document.getElementById('isolate-sel-btn').addEventListener('click', (e) => { e.stopPropagation(); isolateSelectedMesh(); });
             document.getElementById('unhide-all-btn').addEventListener('click', (e) => { e.stopPropagation(); unhideAllMeshes(); });
             document.getElementById('clear-btn').addEventListener('click', resetViewer);
             document.getElementById('import-input').addEventListener('change', handleFile);
@@ -1672,6 +1679,17 @@
                     rec.div.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             });
+        }
+
+        function isolateSelectedMesh() {
+            if (selectedMeshes.length > 0) {
+                const toKeep = new Set(selectedMeshes);
+                rootGroup.traverse(o => {
+                    if (o.isMesh && !o._isSelectionHelper) {
+                        o.visible = toKeep.has(o);
+                    }
+                });
+            }
         }
 
         function hideSelectedMesh() {

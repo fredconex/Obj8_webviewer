@@ -22,7 +22,8 @@ ObjView is a high-performance web-based viewer specifically designed for X-Plane
 
 ### Selection & Visibility
 - H: Hide the currently selected mesh.
-- Shift + H: Unhide all previously hidden meshes.
+- Shift + H: Isolate selected meshes (hide everything else).
+- Alt + H: Unhide all previously hidden meshes.
 - Shift + Click: Select multiple meshes in the viewport.
 
 ### DataRef Sliders
