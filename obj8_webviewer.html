@@ -491,6 +491,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            cursor: pointer;
         }
 
         .copy-btn-inline {
@@ -1671,6 +1672,24 @@
             updateObjectListSelection();
         }
 
+        function selectMeshesByDataRef(drefName) {
+            deselectMesh(); // Clear current selection
+            const meshesToSelect = new Set();
+            animationControllers.forEach(ctrl => {
+                if (ctrl.dref === drefName) {
+                    ctrl.target.traverse(obj => {
+                        if (obj.isMesh && !obj._isSelectionHelper) {
+                            meshesToSelect.add(obj);
+                        }
+                    });
+                }
+            });
+
+            meshesToSelect.forEach(mesh => {
+                selectMesh(mesh, true); // true for append mode
+            });
+        }
+
         function updateObjectListSelection() {
             // First clear all
             loadedObjects.forEach(rec => rec.div.classList.remove('active-entry'));
@@ -2468,6 +2487,11 @@
                         });
                         
                         nameEl.prepend(copyBtn);
+
+                        // Add selection logic when clicking the name
+                        nameEl.addEventListener('click', () => {
+                            selectMeshesByDataRef(name);
+                        });
                     }
                     const inputs = ctrl.domElement.querySelectorAll('input, select');
                     inputs.forEach((input, idx) => {
