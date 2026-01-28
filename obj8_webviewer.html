@@ -690,8 +690,8 @@
             margin-left: 8px;
         }
 
-        /* --- SETTINGS POPUP --- */
-        #settings-popup {
+        /* --- POPUP MENUS --- */
+        .popup-menu {
             position: absolute;
             top: 100%;
             /* Below parent */
@@ -712,10 +712,14 @@
             transition: opacity 0.2s, transform 0.2s;
         }
 
-        #settings-popup.hidden {
+        .popup-menu.hidden {
             opacity: 0;
             pointer-events: none;
             transform: scale(0.95);
+        }
+
+        #settings-popup {
+            /* Now using .popup-menu styles */
         }
 
         .popup-section h3 {
@@ -739,6 +743,29 @@
         .popup-row span.material-symbols-outlined {
             font-size: 18px;
             color: #888;
+        }
+
+        .color-preview-box {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.1s;
+        }
+
+        .color-preview-box:hover {
+            transform: scale(1.1);
+            border-color: var(--accent);
+        }
+
+        .hidden-color-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+            pointer-events: none;
         }
 
         /* --- LOADING BAR --- */
@@ -885,7 +912,7 @@
                     <button id="settings-btn" class="icon-btn-tool" title="Settings"><span
                             class="material-symbols-outlined">settings</span></button>
                     <!-- POPUP -->
-                    <div id="settings-popup" class="hidden">
+                    <div id="settings-popup" class="hidden popup-menu">
                         <div class="popup-section">
                             <h3>Material Defaults</h3>
                             <div class="popup-row">
@@ -929,9 +956,34 @@
                             <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
                                     Background</label></div>
                         </div>
+                    </div>
+                </div>
+
+                <div style="position: relative;">
+                    <button id="screenshot-tool-btn" class="icon-btn-tool" title="Screenshot"><span
+                            class="material-symbols-outlined">photo_camera</span></button>
+                    <!-- SCREENSHOT POPUP -->
+                    <div id="screenshot-popup" class="hidden popup-menu">
                         <div class="popup-section">
-                            <h3>Actions</h3>
-                            <button id="screenshot-btn" class="btn" style="margin-top: 0;">Generate Screenshot</button>
+                            <h3>Screenshot Settings</h3>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="Background">wallpaper</span>
+                                <select id="ss-bg-mode" class="toolbar-select" style="flex-grow: 1; height: 26px; font-size: 0.75rem; padding: 0 5px;">
+                                    <option value="solid">Solid Color</option>
+                                    <option value="gradient">Gradient</option>
+                                    <option value="transparent">Transparent</option>
+                                </select>
+                                <div id="ss-color-container" style="display: flex; gap: 4px;">
+                                    <div id="ss-color-preview-1" class="color-preview-box" title="Main Color"></div>
+                                    <input type="color" id="ss-color-input-1" class="hidden-color-input">
+                                    <div id="ss-color-preview-2" class="color-preview-box" title="Secondary Color"></div>
+                                    <input type="color" id="ss-color-input-2" class="hidden-color-input">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 6px; margin-top: 5px;">
+                                <button id="ss-capture-1x" class="btn" style="margin-top: 0; flex: 1;">Capture</button>
+                                <button id="ss-capture-2x" class="btn" style="margin-top: 0; width: 40px; flex-shrink: 0;">2x</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1039,7 +1091,11 @@
             envIntensity: 0.8,
             rotation: 0,
             showBackground: false,
-            hdr: 'studio'
+            hdr: 'studio',
+            ssBgMode: 'transparent',
+            ssMultiplier: 1,
+            ssBgColor1: '#121212',
+            ssBgColor2: '#050505'
         };
 
         // Lights
@@ -1288,25 +1344,93 @@
             // Settings Popup
             const setBtn = document.getElementById('settings-btn');
             const setPop = document.getElementById('settings-popup');
-            const screenshotBtn = document.getElementById('screenshot-btn');
-
-            setPop.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent interaction pass-through
+            
+            setPop.addEventListener('mousedown', (e) => e.stopPropagation());
             setBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                screenshotPop.classList.add('hidden'); // Close other popup
+                screenshotBtn.classList.remove('active');
+                
                 setPop.classList.toggle('hidden');
                 setBtn.classList.toggle('active', !setPop.classList.contains('hidden'));
             });
 
+            // Screenshot Popup
+            const screenshotBtn = document.getElementById('screenshot-tool-btn');
+            const screenshotPop = document.getElementById('screenshot-popup');
+            const capture1x = document.getElementById('ss-capture-1x');
+            const capture2x = document.getElementById('ss-capture-2x');
+
+            screenshotPop.addEventListener('mousedown', (e) => e.stopPropagation());
             screenshotBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                takeScreenshot();
+                setPop.classList.add('hidden'); // Close other popup
+                setBtn.classList.remove('active');
+
+                screenshotPop.classList.toggle('hidden');
+                screenshotBtn.classList.toggle('active', !screenshotPop.classList.contains('hidden'));
             });
 
-            // Close popup on click outside
+            const performCapture = (multiplier) => {
+                settings.ssMultiplier = multiplier;
+                takeScreenshot();
+                screenshotPop.classList.add('hidden');
+                screenshotBtn.classList.remove('active');
+            };
+
+            capture1x.addEventListener('click', (e) => { e.stopPropagation(); performCapture(1); });
+            capture2x.addEventListener('click', (e) => { e.stopPropagation(); performCapture(2); });
+
+            // Screenshot Settings Binding
+            const ssBgMode = document.getElementById('ss-bg-mode');
+            const colorPre1 = document.getElementById('ss-color-preview-1');
+            const colorIn1 = document.getElementById('ss-color-input-1');
+            const colorPre2 = document.getElementById('ss-color-preview-2');
+            const colorIn2 = document.getElementById('ss-color-input-2');
+
+            const updateColorUI = () => {
+                const mode = ssBgMode.value;
+                colorPre1.style.display = (mode === 'solid' || mode === 'gradient') ? '' : 'none';
+                colorPre2.style.display = (mode === 'gradient') ? '' : 'none';
+                
+                colorPre1.style.backgroundColor = settings.ssBgColor1;
+                colorIn1.value = settings.ssBgColor1;
+                colorPre2.style.backgroundColor = settings.ssBgColor2;
+                colorIn2.value = settings.ssBgColor2;
+            };
+
+            ssBgMode.value = settings.ssBgMode || 'transparent';
+            ssBgMode.addEventListener('change', (e) => {
+                settings.ssBgMode = e.target.value;
+                updateColorUI();
+                saveSettings();
+            });
+
+            colorPre1.addEventListener('click', () => colorIn1.click());
+            colorIn1.addEventListener('input', (e) => {
+                settings.ssBgColor1 = e.target.value;
+                colorPre1.style.backgroundColor = settings.ssBgColor1;
+                saveSettings();
+            });
+
+            colorPre2.addEventListener('click', () => colorIn2.click());
+            colorIn2.addEventListener('input', (e) => {
+                settings.ssBgColor2 = e.target.value;
+                colorPre2.style.backgroundColor = settings.ssBgColor2;
+                saveSettings();
+            });
+
+            updateColorUI();
+
+            // Close popups on click outside
             window.addEventListener('click', (e) => {
                 if (!setPop.contains(e.target) && e.target !== setBtn && !setBtn.contains(e.target)) {
                     setPop.classList.add('hidden');
                     setBtn.classList.remove('active');
+                }
+                if (!screenshotPop.contains(e.target) && e.target !== screenshotBtn && !screenshotBtn.contains(e.target)) {
+                    screenshotPop.classList.add('hidden');
+                    screenshotBtn.classList.remove('active');
                 }
             });
         }
@@ -2701,18 +2825,65 @@
         }
 
         function takeScreenshot() {
-            // 1. Save current state
+            // 1. Check Hardware Limits
+            const gl = renderer.getContext();
+            const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+            const maxRes = Math.min(maxViewportDims[0], maxViewportDims[1], 16384);
+            
+            // 2. Save current state
             const originalBackground = scene.background;
             const originalGridVisible = worldGrid.visible;
             const originalAxesVisible = worldAxes.visible;
             const skeletonStates = skeletonHelpers.map(h => h.visible);
             
-            // Save original size/ratio
             const originalSize = new THREE.Vector2();
             renderer.getSize(originalSize);
             const originalPixelRatio = renderer.getPixelRatio();
+            const originalClearAlpha = renderer.getClearAlpha();
 
-            // Hide selection helpers
+            // 3. Calculate and Validate Resolution
+            const screenshotMultiplier = settings.ssMultiplier || 1;
+            let width = Math.round(originalSize.x * screenshotMultiplier);
+            let height = Math.round(originalSize.y * screenshotMultiplier);
+
+            if (width > maxRes || height > maxRes) {
+                const ratio = Math.min(maxRes / width, maxRes / height);
+                width = Math.floor(width * ratio);
+                height = Math.floor(height * ratio);
+                showToast(`Resolution capped to ${width}x${height}`);
+            }
+
+            // 4. Prepare for render
+            renderer.setSize(width, height, false);
+            renderer.setViewport(0, 0, width, height);
+            
+            // Background Logic
+            if (settings.ssBgMode === 'transparent') {
+                scene.background = null;
+                renderer.setClearAlpha(0);
+            } else if (settings.ssBgMode === 'gradient') {
+                const canvas = document.createElement('canvas');
+                canvas.width = 2;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                const grad = ctx.createLinearGradient(0, 0, 0, 512);
+                grad.addColorStop(0, settings.ssBgColor1 || '#1e1e1e');
+                grad.addColorStop(1, settings.ssBgColor2 || '#050505');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 2, 512);
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.colorSpace = THREE.SRGBColorSpace;
+                scene.background = tex;
+            } else {
+                // Solid Mode
+                scene.background = new THREE.Color(settings.ssBgColor1 || 0x121212);
+                renderer.setClearAlpha(1);
+            }
+
+            // Hide UI helpers
+            worldGrid.visible = false;
+            worldAxes.visible = false;
+            skeletonHelpers.forEach(h => h.visible = false);
             const selectedHelpers = [];
             rootGroup.traverse(obj => {
                 if (obj._isSelectionHelper) {
@@ -2721,51 +2892,46 @@
                 }
             });
 
-            // 2. Prepare for high-res transparent screenshot
-            const screenshotMultiplier = 2; // 2x resolution
-            const width = originalSize.x * screenshotMultiplier;
-            const height = originalSize.y * screenshotMultiplier;
-
-            renderer.setSize(width, height, false);
-            // No need to change camera aspect if we scale proportionally, 
-            // but we must call updateProjectionMatrix if we were to change aspect.
-            
-            const originalClearAlpha = renderer.getClearAlpha();
-            scene.background = null;
-            renderer.setClearAlpha(0);
-            worldGrid.visible = false;
-            worldAxes.visible = false;
-            skeletonHelpers.forEach(h => h.visible = false);
-
-            // 3. Render
-            renderer.render(scene, camera);
-
-            // 4. Download
+            // 5. Render and Capture
             try {
-                const dataURL = renderer.domElement.toDataURL('image/png');
-                const link = document.createElement('a');
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                link.download = `screenshot_${timestamp}.png`;
-                link.href = dataURL;
-                link.click();
+                renderer.render(scene, camera);
+                
+                renderer.domElement.toBlob((blob) => {
+                    if (!blob) {
+                        showToast("Capture failed");
+                        restore();
+                        return;
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                    link.download = `screenshot_${width}x${height}_${timestamp}.png`;
+                    link.href = url;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    restore();
+                }, 'image/png');
+
             } catch (e) {
                 console.error("Screenshot failed:", e);
-                showToast("Screenshot failed - check console");
+                showToast("Screenshot failed");
+                restore();
             }
 
-            // 5. Restore
-            renderer.setSize(originalSize.x, originalSize.y, true);
-            renderer.setPixelRatio(originalPixelRatio);
-            
-            scene.background = originalBackground;
-            renderer.setClearAlpha(originalClearAlpha);
-            worldGrid.visible = originalGridVisible;
-            worldAxes.visible = originalAxesVisible;
-            skeletonHelpers.forEach((h, i) => h.visible = skeletonStates[i]);
-            selectedHelpers.forEach(s => s.obj.visible = s.visible);
+            function restore() {
+                renderer.setSize(originalSize.x, originalSize.y, true);
+                renderer.setPixelRatio(originalPixelRatio);
+                renderer.setViewport(0, 0, originalSize.x, originalSize.y);
+                
+                scene.background = originalBackground;
+                renderer.setClearAlpha(originalClearAlpha);
+                worldGrid.visible = originalGridVisible;
+                worldAxes.visible = originalAxesVisible;
+                skeletonHelpers.forEach((h, i) => h.visible = skeletonStates[i]);
+                selectedHelpers.forEach(s => s.obj.visible = s.visible);
 
-            // Re-render to restore view
-            renderer.render(scene, camera);
+                renderer.render(scene, camera);
+            }
         }
 
         function filterDataRefs(e) {
