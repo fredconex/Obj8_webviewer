@@ -1174,6 +1174,9 @@
             document.getElementById('import-input').addEventListener('change', handleFile);
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
             document.getElementById('search-clear').addEventListener('click', () => {
+                if (selectedMeshes.length > 0) {
+                    deselectMesh();
+                }
                 document.getElementById('dref-search').value = '';
                 filterDataRefs({ target: { value: '' } });
             });
@@ -1365,6 +1368,7 @@
 
         function onClick(event) {
             if (event.button !== 0) return; // Left click only
+            if (event.target !== renderer.domElement) return;
 
             // Check if we moved significant distance (likely panning)
             const dx = event.clientX - mouseDownPos.x;
@@ -2769,12 +2773,14 @@
         }
 
         function updateDataRefVisibility() {
-            const term = document.getElementById('dref-search').value.toLowerCase();
+            const searchInput = document.getElementById('dref-search');
+            const term = searchInput.value.toLowerCase();
 
             // Determine active datarefs based on visibility AND potential selection
             const activeDatarefs = new Set();
 
             if (selectedMeshes.length > 0) {
+                searchInput.placeholder = "Filtered by selection...";
                 // Only show datarefs relevant to these specific meshes and their parents
                 selectedMeshes.forEach(mesh => {
                     let curr = mesh;
@@ -2788,6 +2794,7 @@
                     }
                 });
             } else {
+                searchInput.placeholder = "Filter DataRefs...";
                 // Normal mode: Show Union of all DataRefs used by currently visible objects
                 loadedObjects.forEach(obj => {
                     if (obj.group.visible) {
