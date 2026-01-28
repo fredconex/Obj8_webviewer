@@ -1187,6 +1187,7 @@
             bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); updateMaterialProperties(); });
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); updateMaterialProperties(); });
             bind('mat-lit', e => { settings.lit = parseFloat(e.target.value); updateMaterialProperties(); });
+
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
             bind('env-intensity', e => { 
                 settings.envIntensity = parseFloat(e.target.value); 
@@ -1714,7 +1715,7 @@
             rootGroup.add(fileGroup);
 
             // Register for List
-            registerObjectUI(fileName, fileGroup);
+            registerObjectUI(fileName, fileGroup, text);
 
             const vertices = [];
             const indices = [];
@@ -1723,6 +1724,7 @@
             let currentTexture = "default";
             let litTexture = null;
             let normalTexture = null;
+            let useNormalMetalness = false;
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
@@ -1730,6 +1732,7 @@
                 if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; }
                 if (parts[0] === 'TEXTURE_LIT') { litTexture = parts[1]; }
                 if (parts[0] === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
+                if (parts[0] === 'NORMAL_METALNESS') { useNormalMetalness = true; }
             }
 
             const groupStack = [{ object: fileGroup }];
@@ -1754,7 +1757,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness);
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -1908,7 +1911,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -1920,7 +1923,8 @@
                 if (vIdx < vertices.length) {
                     const v = vertices[vIdx];
                     pos.push(v.x, v.y, v.z);
-                    norm.push(v.nx, v.ny, v.nz);
+                    // Always invert normals as OBJ8 usually expects a different orientation than default Three.js
+                    norm.push(-v.nx, -v.ny, -v.nz);
                     uv.push(v.u, v.v);
                 }
             }
@@ -1938,17 +1942,18 @@
                     geo.computeTangents();
                 }
 
-                const mat = getMaterial(texName, litName, normName);
+                const mat = getMaterial(texName, litName, normName, useNormalMetalness);
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh._textureName = texName;
                 mesh._litName = litName;
                 mesh._normalName = normName;
+                mesh._useNormalMetalness = useNormalMetalness;
                 // Shadows removed
                 currentGroup().add(mesh);
             }
         }
 
-        function registerObjectUI(name, group) {
+        function registerObjectUI(name, group, text) {
             const container = document.getElementById('obj-list-container');
             const div = document.createElement('div');
             div.className = 'obj-item';
@@ -1968,7 +1973,7 @@
             solo.textContent = 'S';
             solo.title = 'Solo Object';
 
-            const objRecord = { name, group, visible: true, div, eye, solo, datarefs: new Set() };
+            const objRecord = { name, group, text, visible: true, div, eye, solo, datarefs: new Set() };
             loadedObjects.push(objRecord);
 
             // Toggle Visibility
@@ -2256,6 +2261,8 @@
         }
 
         const processedMatCache = new Map();
+        const processedNormalMetalnessCache = new Map();
+        const processedNormalCache = new Map();
 
         function getProcessedMatTexture(texture) {
             if (!texture || !texture.image || texture.isCanvasTexture) return texture;
@@ -2272,8 +2279,8 @@
             const data = imageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
-                const f0 = data[i];     // Red channel: Metalness (f0)
-                const gloss = data[i + 1]; // Green channel: Glossiness
+                const f0 = data[i];        // Red channel: Metalness (f0)
+                const gloss = data[i + 1];  // Green channel: Glossiness
 
                 // Three.js MeshStandardMaterial expects:
                 // Metalness in BLUE channel
@@ -2281,6 +2288,7 @@
                 data[i + 2] = f0;              // Move Red to Blue (Metalness)
                 data[i + 1] = 255 - gloss;     // Invert Green (Glossiness -> Roughness)
                 data[i] = 255;                 // Red channel unused, set to white
+                data[i + 3] = 255;             // Ensure alpha is full
             }
 
             ctx.putImageData(imageData, 0, 0);
@@ -2296,12 +2304,89 @@
             return newTex;
         }
 
-        function getMaterial(textureName, litName, normalName) {
+        function getProcessedNormalMap(texture) {
+            if (!texture || !texture.image || texture.isCanvasTexture) return texture;
+            if (processedNormalCache.has(texture)) return processedNormalCache.get(texture);
+
+            const img = texture.image;
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                // Set Blue channel to 255 to ensure Z normal is 1.0 
+                // when it's being shared with Metalness
+                data[i + 2] = 255; 
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            const newTex = new THREE.CanvasTexture(canvas);
+            newTex.name = texture.name + "_norm_fixed";
+            newTex.flipY = texture.flipY;
+            newTex.wrapS = texture.wrapS;
+            newTex.wrapT = texture.wrapT;
+            newTex.minFilter = texture.minFilter;
+            newTex.magFilter = texture.magFilter;
+
+            processedNormalCache.set(texture, newTex);
+            return newTex;
+        }
+
+        function getProcessedNormalMetalnessTexture(texture) {
+            if (!texture || !texture.image || texture.isCanvasTexture) return texture;
+            if (processedNormalMetalnessCache.has(texture)) return processedNormalMetalnessCache.get(texture);
+
+            const img = texture.image;
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                // X-Plane NORMAL_METALNESS format:
+                // Red/Green = Normal Map (X/Y)
+                // Blue = Metalness
+                // Alpha = Glossiness (which is 1.0 - Roughness)
+                const metal = data[i + 2]; // Blue channel: Metalness
+                const gloss = data[i + 3]; // Alpha channel: Glossiness
+
+                // Three.js MeshStandardMaterial expects:
+                // Metalness in BLUE channel
+                // Roughness in GREEN channel
+                data[i + 2] = metal;              // Metalness in Blue
+                data[i + 1] = 255 - gloss;        // Invert Glossiness to get Roughness in Green
+                data[i] = 255;                    // Red unused
+                data[i + 3] = 255;                // Set alpha to full for the new map
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            const newTex = new THREE.CanvasTexture(canvas);
+            newTex.name = texture.name + "_pbr_from_norm";
+            newTex.flipY = texture.flipY;
+            newTex.wrapS = texture.wrapS;
+            newTex.wrapT = texture.wrapT;
+            newTex.minFilter = texture.minFilter;
+            newTex.magFilter = texture.magFilter;
+
+            processedNormalMetalnessCache.set(texture, newTex);
+            return newTex;
+        }
+
+        function getMaterial(textureName, litName, normalName, useNormalMetalness) {
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
             const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
             // Removed settings from cacheKey to allow property updates without cache invalidation
-            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}`;
+            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${useNormalMetalness}`;
 
             if (!materialCache.has(cacheKey)) {
                 let mat;
@@ -2355,7 +2440,7 @@
                     let ntex = findTex(normBase);
                     if (!ntex) ntex = findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
                     if (ntex) {
-                        mat.normalMap = ntex;
+                        mat.normalMap = useNormalMetalness ? getProcessedNormalMap(ntex) : ntex;
                         mat.normalScale.set(1, 1);
                         // X-Plane normal maps use R and G channels for normal vector
                         ntex.colorSpace = THREE.NoColorSpace;
@@ -2374,6 +2459,13 @@
                         mat.metalness = 1.0;
                         mat.roughness = 1.0;
 
+                        if (!mat.map) mat.color.set(0xffffff);
+                    } else if (useNormalMetalness && ntex) {
+                        const processedTex = getProcessedNormalMetalnessTexture(ntex);
+                        mat.metalnessMap = processedTex;
+                        mat.roughnessMap = processedTex;
+                        mat.metalness = 1.0;
+                        mat.roughness = 1.0;
                         if (!mat.map) mat.color.set(0xffffff);
                     }
                 } else if (currentViewMode === 'albedo') {
@@ -2420,9 +2512,17 @@
             materialCache.clear();
             rootGroup.traverse(obj => {
                 if (obj.isMesh && !obj._isSelectionHelper) {
-                    const t = obj._textureName, l = obj._litName, n = obj._normalName;
-                    obj.material = getMaterial(t, l, n);
+                    const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness;
+                    obj.material = getMaterial(t, l, n, m);
                 }
+            });
+        }
+
+        function refreshAllObjects() {
+            // Store records because parseOBJ8 will remove them from loadedObjects and re-add them
+            const records = [...loadedObjects];
+            records.forEach(rec => {
+                parseOBJ8(rec.text, rec.name);
             });
         }
 
