@@ -875,6 +875,17 @@
                         <div class="popup-section">
                             <h3>Environment</h3>
                             <div class="popup-row">
+                                <span class="material-symbols-outlined" title="HDR Environment">landscape</span>
+                                <select id="env-hdr-select" class="toolbar-select"
+                                    style="flex-grow: 1; height: 26px; font-size: 0.75rem; padding: 0 5px;">
+                                    <option value="studio">Studio (Neutral)</option>
+                                    <option value="venice">Venice Sunset</option>
+                                    <option value="overpass">Pedestrian Overpass</option>
+                                    <option value="custom">Load Custom HDR...</option>
+                                </select>
+                                <input type="file" id="custom-hdr-input" accept=".hdr" style="display:none">
+                            </div>
+                            <div class="popup-row">
                                 <span class="material-symbols-outlined" title="Exposure">exposure</span>
                                 <input type="range" id="cam-exposure" min="0.1" max="2" step="0.1" title="Exposure">
                             </div>
@@ -991,10 +1002,11 @@
         // Settings (Defaults)
         const settings = {
             exposure: 1.0,
-            rough: 0.5, metal: 0.2, lit: 1.0,
+            rough: 1.0, metal: 0.0, lit: 1.0,
             envIntensity: 0.8,
             rotation: 0,
-            showBackground: true
+            showBackground: false,
+            hdr: 'studio'
         };
 
         // Lights
@@ -1023,16 +1035,15 @@
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
-            // PBR Environment (Default fallback)
+            // PBR Environment
             pmremGenerator = new THREE.PMREMGenerator(renderer);
-            scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
             scene.environmentIntensity = settings.envIntensity;
             const rotRad = (settings.rotation || 0) * (Math.PI / 180);
             scene.backgroundRotation.y = rotRad;
             scene.environmentRotation.y = rotRad;
 
-            // Default HDRI loading removed to avoid CORS/404 errors.
-            // Users can still drop their own .hdr files.
+            // Apply selected HDR (async)
+            applyHDR();
 
             // Camera
             camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 2000);
@@ -1166,6 +1177,7 @@
             setVal('cam-exposure', settings.exposure);
             setVal('env-intensity', settings.envIntensity);
             setVal('env-rotation', settings.rotation);
+            setVal('env-hdr-select', settings.hdr || 'studio');
 
             const bind = (id, fn) => {
                 const el = document.getElementById(id);
@@ -1176,12 +1188,39 @@
             bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); updateMaterialProperties(); });
             bind('mat-lit', e => { settings.lit = parseFloat(e.target.value); updateMaterialProperties(); });
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
-            bind('env-intensity', e => { settings.envIntensity = parseFloat(e.target.value); scene.environmentIntensity = settings.envIntensity; });
+            bind('env-intensity', e => { 
+                settings.envIntensity = parseFloat(e.target.value); 
+                scene.environmentIntensity = settings.envIntensity; 
+                updateMaterialProperties();
+            });
             bind('env-rotation', e => {
                 settings.rotation = parseFloat(e.target.value);
                 const rad = settings.rotation * (Math.PI / 180);
                 scene.backgroundRotation.y = rad;
                 scene.environmentRotation.y = rad;
+            });
+            bind('env-hdr-select', e => {
+                if (e.target.value === 'custom') {
+                    document.getElementById('custom-hdr-input').click();
+                } else {
+                    settings.hdr = e.target.value;
+                    applyHDR();
+                }
+            });
+
+            document.getElementById('custom-hdr-input').addEventListener('change', async (e) => {
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    const url = URL.createObjectURL(file);
+                    try {
+                        await loadHDRI(url);
+                        settings.hdr = 'studio'; // Don't persist blob URLs
+                        saveSettings();
+                    } catch (err) {
+                        console.error("Custom HDR failed:", err);
+                    }
+                    URL.revokeObjectURL(url);
+                }
             });
 
             document.getElementById('env-bg-chk').checked = settings.showBackground;
@@ -1228,6 +1267,31 @@
             });
         }
 
+        async function applyHDR() {
+            if (settings.hdr === 'studio') {
+                if (scene.environment && scene.environment.dispose) scene.environment.dispose();
+                scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+                updateBackground();
+            } else {
+                let url = '';
+                // Using verified URLs from Three.js examples repository
+                if (settings.hdr === 'venice') url = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/venice_sunset_1k.hdr';
+                if (settings.hdr === 'overpass') url = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/pedestrian_overpass_1k.hdr';
+
+                if (url) {
+                    try {
+                        await loadHDRI(url);
+                    } catch (e) {
+                        console.error("Failed to load HDR, falling back to studio", e);
+                        settings.hdr = 'studio';
+                        const el = document.getElementById('env-hdr-select');
+                        if (el) el.value = 'studio';
+                        applyHDR();
+                    }
+                }
+            }
+        }
+
         function updateBackground() {
             if (settings.showBackground && scene.environment) {
                 scene.background = scene.environment;
@@ -1241,11 +1305,16 @@
                 new RGBELoader()
                     .load(url, function (texture) {
                         texture.mapping = THREE.EquirectangularReflectionMapping;
+                        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+                        
                         if (scene.environment && scene.environment.dispose) scene.environment.dispose();
-                        scene.environment = texture;
+                        scene.environment = envMap;
                         scene.environmentIntensity = settings.envIntensity;
+                        
+                        texture.dispose(); // Original texture is no longer needed after PMREM
+                        
                         updateBackground();
-                        resolve(texture);
+                        resolve(envMap);
                     }, undefined, (err) => {
                         console.error("Error loading HDRI:", err);
                         reject(err);
@@ -2326,6 +2395,9 @@
             materialCache.forEach(mat => {
                 // Shared logic for Material/Standard modes
                 if (mat.isMeshStandardMaterial) {
+                    // Update envMapIntensity
+                    mat.envMapIntensity = settings.envIntensity;
+
                     // Update LIT intensity if map exists
                     if (mat.emissiveMap) {
                         mat.emissiveIntensity = settings.lit;
