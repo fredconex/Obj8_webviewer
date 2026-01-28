@@ -2423,8 +2423,15 @@
             // Ensure minimum distance
             distance = Math.max(distance, 0.5);
 
-            // Position camera at a nice 3/4 view angle from the center
-            const offset = new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(distance);
+            // Preserve current orientation relative to the new target
+            const currentDir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+            
+            // If currentDir is zero length (e.g. camera inside target), fallback to default
+            if (currentDir.lengthSq() < 0.0001) {
+                currentDir.set(1, 0.8, 1).normalize();
+            }
+
+            const offset = currentDir.multiplyScalar(distance);
             camera.position.copy(center).add(offset);
 
             controls.target.copy(center);
