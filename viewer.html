@@ -978,6 +978,7 @@
         let loadedObjects = [];
         let soloObjects = new Set(); // Multi-select Set
         let isShiftDown = false; // Global Shift Tracking
+        let isCtrlDown = false; // Global Ctrl Tracking
 
         // Resources
         let loadedTextures = new Map();
@@ -1083,6 +1084,7 @@
             window.addEventListener('resize', onResize);
             window.addEventListener('keydown', e => {
                 if (e.key === 'Shift') isShiftDown = true;
+                if (e.key === 'Control') isCtrlDown = true;
                 if (e.key.toLowerCase() === 'f' && document.activeElement.tagName !== 'INPUT') {
                     centerCamera();
                 }
@@ -1098,6 +1100,11 @@
             });
             window.addEventListener('keyup', e => {
                 if (e.key === 'Shift') isShiftDown = false;
+                if (e.key === 'Control') isCtrlDown = false;
+            });
+            window.addEventListener('blur', () => {
+                isShiftDown = false;
+                isCtrlDown = false;
             });
             viewport.addEventListener('mousedown', (e) => {
                 mouseDownPos.x = e.clientX;
@@ -2546,8 +2553,14 @@
                 if (val === undefined) continue;
                 if (ctrl.type === 'translate') ctrl.target.position.copy(interpolate(val, ctrl.keys));
                 else if (ctrl.type === 'rotate') ctrl.target.quaternion.setFromAxisAngle(ctrl.axis, interpolate(val, ctrl.keys) * (Math.PI / 180));
-                else if (ctrl.type === 'hide') ctrl.target.visible = !(val >= ctrl.min && val <= ctrl.max);
-                else if (ctrl.type === 'show') ctrl.target.visible = (val >= ctrl.min && val <= ctrl.max);
+                else if (ctrl.type === 'hide') {
+                    if (isCtrlDown) ctrl.target.visible = true;
+                    else ctrl.target.visible = !(val >= ctrl.min && val <= ctrl.max);
+                }
+                else if (ctrl.type === 'show') {
+                    if (isCtrlDown) ctrl.target.visible = true;
+                    else ctrl.target.visible = (val >= ctrl.min && val <= ctrl.max);
+                }
             }
             renderer.render(scene, camera);
         }
