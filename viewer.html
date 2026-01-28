@@ -1268,25 +1268,39 @@
 
             raycaster.setFromCamera(mouse, camera);
 
-            // Filter out selection helpers from raycasting
-            const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => !i.object._isSelectionHelper);
+            // Filter out selection helpers and non-visible meshes from raycasting
+            const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => {
+                if (i.object._isSelectionHelper || i.object.type !== 'Mesh') return false;
+                let curr = i.object;
+                while (curr && curr !== scene) {
+                    if (!curr.visible) return false;
+                    curr = curr.parent;
+                }
+                return true;
+            });
 
             if (intersects.length > 0) {
-                const hit = intersects.find(i => {
-                    if (i.object.type !== 'Mesh') return false;
-                    let curr = i.object;
-                    while (curr && curr !== scene) {
-                        if (!curr.visible) return false;
-                        curr = curr.parent;
+                // Unique the meshes in intersects to avoid cycling through multiple hits on the same mesh
+                const uniqueIntersects = [];
+                const seen = new Set();
+                for (const hit of intersects) {
+                    if (!seen.has(hit.object)) {
+                        seen.add(hit.object);
+                        uniqueIntersects.push(hit);
                     }
-                    return true;
-                });
-
-                if (hit) {
-                    selectMesh(hit.object, event.shiftKey);
-                } else {
-                    if (!event.shiftKey) deselectMesh();
                 }
+
+                let meshToSelect = uniqueIntersects[0].object;
+
+                // Cycle logic: if we are clicking and NOT using shift, and the current selection is one of the intersected meshes
+                if (!event.shiftKey && selectedMeshes.length === 1) {
+                    const currentIdx = uniqueIntersects.findIndex(i => i.object === selectedMeshes[0]);
+                    if (currentIdx !== -1) {
+                        meshToSelect = uniqueIntersects[(currentIdx + 1) % uniqueIntersects.length].object;
+                    }
+                }
+
+                selectMesh(meshToSelect, event.shiftKey);
             } else {
                 if (!event.shiftKey) deselectMesh();
             }
