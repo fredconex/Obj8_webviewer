@@ -2555,11 +2555,25 @@
                 else if (ctrl.type === 'rotate') ctrl.target.quaternion.setFromAxisAngle(ctrl.axis, interpolate(val, ctrl.keys) * (Math.PI / 180));
                 else if (ctrl.type === 'hide') {
                     if (isCtrlDown) ctrl.target.visible = true;
-                    else ctrl.target.visible = !(val >= ctrl.min && val <= ctrl.max);
+                    else {
+                        if (ctrl.min <= ctrl.max) {
+                            ctrl.target.visible = !(val >= ctrl.min && val <= ctrl.max);
+                        } else {
+                            // Reversed: hide if outside [max, min], i.e., show if inside (max, min)
+                            ctrl.target.visible = (val > ctrl.max && val < ctrl.min);
+                        }
+                    }
                 }
                 else if (ctrl.type === 'show') {
                     if (isCtrlDown) ctrl.target.visible = true;
-                    else ctrl.target.visible = (val >= ctrl.min && val <= ctrl.max);
+                    else {
+                        if (ctrl.min <= ctrl.max) {
+                            ctrl.target.visible = (val >= ctrl.min && val <= ctrl.max);
+                        } else {
+                            // Reversed: show if outside [max, min]
+                            ctrl.target.visible = (val <= ctrl.max || val >= ctrl.min);
+                        }
+                    }
                 }
             }
             renderer.render(scene, camera);
