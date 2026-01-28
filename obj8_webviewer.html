@@ -93,21 +93,25 @@
 
         #search-container {
             pointer-events: auto;
-            background: var(--panel-bg);
+            background: rgba(30, 30, 30, 0.85);
             padding: 8px;
-            border-radius: 4px;
-            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             position: relative;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             flex-shrink: 0;
+            backdrop-filter: blur(8px);
         }
 
         #gui-scroll-wrapper {
             pointer-events: auto;
             overflow-y: auto;
             overflow-x: hidden;
-            border-radius: 4px;
+            border-radius: 8px;
             max-height: 100%;
+            background: rgba(30, 30, 30, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
         }
 
         /* --- FLOATING INSPECTOR (Bottom Right) --- */
@@ -177,6 +181,17 @@
             width: 100%;
             accent-color: var(--accent);
             cursor: pointer;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        input[type=range]::-moz-range-track {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
         }
 
         /* --- TYPOGRAPHY & ELEMENTS --- */
@@ -443,10 +458,10 @@
         .lil-gui {
             width: 100% !important;
             pointer-events: auto;
-            --background-color: var(--panel-bg);
+            --background-color: transparent;
             --text-color: #ddd;
-            --widget-color: #333;
-            --hover-color: #444;
+            --widget-color: rgba(0, 0, 0, 0.3);
+            --hover-color: rgba(255, 255, 255, 0.05);
             --name-width: 50%;
         }
 
@@ -470,9 +485,23 @@
             text-overflow: ellipsis;
             padding-bottom: 4px;
             order: 1;
-            cursor: copy;
             user-select: none;
             font-size: 0.75rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .copy-btn-inline {
+            font-size: 14px !important;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.3);
+            transition: color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .copy-btn-inline:hover {
             color: var(--accent);
         }
 
@@ -2192,15 +2221,22 @@
 
 
 
-                // Add click-to-copy
+                // Add click-to-copy button
                 setTimeout(() => {
-                    const label = ctrl.domElement.querySelector('.name');
-                    if (label) {
-                        label.addEventListener('dblclick', (e) => {
+                    const nameEl = ctrl.domElement.querySelector('.name');
+                    if (nameEl && !nameEl.querySelector('.copy-btn-inline')) {
+                        const copyBtn = document.createElement('span');
+                        copyBtn.className = 'material-symbols-outlined copy-btn-inline';
+                        copyBtn.textContent = 'content_copy';
+                        copyBtn.title = 'Copy DataRef';
+                        
+                        copyBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
                             navigator.clipboard.writeText(name);
                             showToast(`Copied: ${name}`);
                         });
+                        
+                        nameEl.prepend(copyBtn);
                     }
                     const inputs = ctrl.domElement.querySelectorAll('input, select');
                     inputs.forEach((input, idx) => {
