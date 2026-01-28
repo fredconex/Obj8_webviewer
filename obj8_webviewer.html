@@ -1766,6 +1766,7 @@
             let normalTexture = null;
             let useNormalMetalness = false;
             let currentBlend = true;
+            let currentPolyOS = 0;
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
@@ -1798,13 +1799,16 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS);
                     }
                     else if (cmd === 'ATTR_blend') {
                         currentBlend = true;
                     }
                     else if (cmd === 'ATTR_no_blend') {
                         currentBlend = false;
+                    }
+                    else if (cmd === 'ATTR_poly_os') {
+                        currentPolyOS = parseInt(tokens[1]) || 0;
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -1958,7 +1962,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -1989,13 +1993,14 @@
                     geo.computeTangents();
                 }
 
-                const mat = getMaterial(texName, litName, normName, useNormalMetalness, isTransparent);
+                const mat = getMaterial(texName, litName, normName, useNormalMetalness, isTransparent, polyOS);
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh._textureName = texName;
                 mesh._litName = litName;
                 mesh._normalName = normName;
                 mesh._useNormalMetalness = useNormalMetalness;
                 mesh._isTransparent = isTransparent;
+                mesh._polyOS = polyOS;
                 // Shadows removed
                 currentGroup().add(mesh);
             }
@@ -2371,18 +2376,21 @@
             return newTex;
         }
 
-        function getMaterial(textureName, litName, normalName, useNormalMetalness, isTransparent) {
+        function getMaterial(textureName, litName, normalName, useNormalMetalness, isTransparent, polyOS = 0) {
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
             const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
-            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${useNormalMetalness}|${isTransparent}`;
+            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${useNormalMetalness}|${isTransparent}|${polyOS}`;
 
             if (!materialCache.has(cacheKey)) {
                 let mat;
                 const standardProps = { 
                     side: THREE.DoubleSide,
                     transparent: false,
-                    alphaToCoverage: isTransparent
+                    alphaToCoverage: isTransparent,
+                    polygonOffset: polyOS !== 0,
+                    polygonOffsetFactor: -polyOS,
+                    polygonOffsetUnits: -polyOS
                 };
 
                 if (currentViewMode === 'albedo' || currentViewMode === 'lit_only') {
@@ -2493,8 +2501,8 @@
             materialCache.clear();
             rootGroup.traverse(obj => {
                 if (obj.isMesh && !obj._isSelectionHelper) {
-                    const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent;
-                    obj.material = getMaterial(t, l, n, m, tr);
+                    const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent, pos = obj._polyOS;
+                    obj.material = getMaterial(t, l, n, m, tr, pos);
                 }
             });
         }
