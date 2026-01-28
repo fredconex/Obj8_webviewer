@@ -30,6 +30,15 @@ ObjView is a high-performance web-based viewer specifically designed for X-Plane
 - Shift (Hold): Disable snapping to keyframe ticks when dragging sliders.
 - Double Click (DataRef Name): Copy the DataRef path to the clipboard.
 
+## Mouse Controls
+
+- Left Click: Select a mesh in the viewport.
+- Shift + Left Click: Add/remove mesh from selection.
+- Right Click: Unselect all meshes (when not dragging).
+- Right Click + Drag: Orbit camera (default).
+- Middle Click + Drag: Pan camera (default).
+- Scroll: Zoom in/out.
+
 ## Technical Details
 
 - Rendering: Three.js (WebGL 2.0)
