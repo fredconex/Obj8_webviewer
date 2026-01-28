@@ -854,6 +854,10 @@
                                 <span class="material-symbols-outlined" title="Metalness">diamond</span>
                                 <input type="range" id="mat-metal" min="0" max="1" step="0.05" title="Metalness">
                             </div>
+                            <div class="popup-row">
+                                <span class="material-symbols-outlined" title="LIT Intensity">lightbulb</span>
+                                <input type="range" id="mat-lit" min="0" max="5" step="0.1" title="LIT Intensity">
+                            </div>
                         </div>
                         <div class="popup-section">
                             <h3>Environment</h3>
@@ -972,7 +976,7 @@
         // Settings (Defaults)
         const settings = {
             exposure: 1.0,
-            rough: 0.5, metal: 0.2,
+            rough: 0.5, metal: 0.2, lit: 1.0,
             envIntensity: 0.8,
             rotation: 0,
             showBackground: true
@@ -1134,6 +1138,7 @@
             };
             setVal('mat-rough', settings.rough);
             setVal('mat-metal', settings.metal);
+            setVal('mat-lit', settings.lit);
             setVal('cam-exposure', settings.exposure);
             setVal('env-intensity', settings.envIntensity);
             setVal('env-rotation', settings.rotation);
@@ -1143,8 +1148,9 @@
                 if (el) el.addEventListener('input', (e) => { fn(e); saveSettings(); });
             };
 
-            bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); refreshMaterials(); });
-            bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); refreshMaterials(); });
+            bind('mat-rough', e => { settings.rough = parseFloat(e.target.value); updateMaterialProperties(); });
+            bind('mat-metal', e => { settings.metal = parseFloat(e.target.value); updateMaterialProperties(); });
+            bind('mat-lit', e => { settings.lit = parseFloat(e.target.value); updateMaterialProperties(); });
             bind('cam-exposure', e => { settings.exposure = parseFloat(e.target.value); renderer.toneMappingExposure = settings.exposure; });
             bind('env-intensity', e => { settings.envIntensity = parseFloat(e.target.value); scene.environmentIntensity = settings.envIntensity; });
             bind('env-rotation', e => {
@@ -1182,6 +1188,7 @@
             // Settings Popup
             const setBtn = document.getElementById('settings-btn');
             const setPop = document.getElementById('settings-popup');
+            setPop.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent interaction pass-through
             setBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 setPop.classList.toggle('hidden');
@@ -2116,7 +2123,8 @@
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
             const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
-            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}|${settings.rough}|${settings.metal}`;
+            // Removed settings from cacheKey to allow property updates without cache invalidation
+            const cacheKey = `${baseName}|${litBase}|${normBase}|${currentViewMode}`;
 
             if (!materialCache.has(cacheKey)) {
                 let mat;
@@ -2159,7 +2167,7 @@
                         if (tex) { mat.map = tex; mat.color.set(0xffffff); }
 
                         const ltex = findTex(litBase);
-                        if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1.0; }
+                        if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = settings.lit; }
                     } else {
                         mat.color.set(0x888888);
                     }
@@ -2215,6 +2223,29 @@
                 materialCache.set(cacheKey, mat);
             }
             return materialCache.get(cacheKey);
+        }
+
+        function updateMaterialProperties() {
+            // Efficiently update existing materials without rebuilding them
+            // This assumes all materials in cache are active or valid
+            materialCache.forEach(mat => {
+                // Shared logic for Material/Standard modes
+                if (mat.isMeshStandardMaterial) {
+                    // Update LIT intensity if map exists
+                    if (mat.emissiveMap) {
+                        mat.emissiveIntensity = settings.lit;
+                    }
+
+                    // Update Roughness/Metalness ONLY if no maps are defining them
+                    // (Matches logic in getMaterial where we set to 1.0 if map exists)
+                    if (!mat.roughnessMap) {
+                        mat.roughness = settings.rough;
+                    }
+                    if (!mat.metalnessMap) {
+                        mat.metalness = settings.metal;
+                    }
+                }
+            });
         }
 
         function refreshMaterials() {
