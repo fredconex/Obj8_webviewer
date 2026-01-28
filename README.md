@@ -35,3 +35,5 @@ ObjView is a high-performance web-based viewer specifically designed for X-Plane
 - Tone Mapping: AgX
 - UI: lil-gui for simulation controls
 - Texture Formats: Support for standard image formats and DDS (via DDSLoader)
+
+<img width="2559" height="1270" alt="image" src="https://github.com/user-attachments/assets/44c611ef-047c-4829-994d-6217eb9b76ae" />
