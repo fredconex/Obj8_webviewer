@@ -1693,15 +1693,29 @@
             });
         }
 
+        let lastVisibilityMap = null;
+
         function isolateSelectedMesh() {
-            if (selectedMeshes.length > 0) {
+            if (lastVisibilityMap) {
+                // Restore previous state
+                rootGroup.traverse(o => {
+                    if (o.isMesh && !o._isSelectionHelper && lastVisibilityMap.has(o)) {
+                        o.visible = lastVisibilityMap.get(o);
+                    }
+                });
+                lastVisibilityMap = null;
+            } else if (selectedMeshes.length > 0) {
+                // Isolate
+                lastVisibilityMap = new Map();
                 const toKeep = new Set(selectedMeshes);
                 rootGroup.traverse(o => {
                     if (o.isMesh && !o._isSelectionHelper) {
+                        lastVisibilityMap.set(o, o.visible);
                         o.visible = toKeep.has(o);
                     }
                 });
             }
+            updateDataRefVisibility();
         }
 
         function hideSelectedMesh() {
@@ -1735,11 +1749,14 @@
             });
 
             updateStats();
+            updateDataRefVisibility();
         }
 
         function unhideAllMeshes() {
             // User requested to ONLY unhide meshes (the ones hidden with H), 
             // NOT objects (the ones hidden with the Eye icon or excluded by Solo).
+
+            lastVisibilityMap = null;
 
             // 1. Reset all Meshes (in case individual meshes were hidden via 'Hide Selected')
             rootGroup.traverse(o => {
@@ -1759,6 +1776,7 @@
             guiControllers = [];
             loadedObjects = [];
             soloObjects.clear();
+            lastVisibilityMap = null;
 
             materialCache.clear();
             loadedTextures.clear();
@@ -3070,6 +3088,22 @@
                             }
                         }
                         curr = curr.parent;
+                    }
+                });
+            } else if (lastVisibilityMap !== null) {
+                searchInput.placeholder = "Filtered by isolation...";
+                // Isolation mode: only show datarefs for meshes that are currently visible
+                rootGroup.traverse(o => {
+                    if (o.isMesh && o.visible && !o._isSelectionHelper) {
+                        let curr = o;
+                        while (curr && curr !== rootGroup && curr !== scene) {
+                            for (let ctrl of animationControllers) {
+                                if (ctrl.target === curr && ctrl.dref) {
+                                    activeDatarefs.add(ctrl.dref);
+                                }
+                            }
+                            curr = curr.parent;
+                        }
                     }
                 });
             } else {
