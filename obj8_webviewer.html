@@ -880,9 +880,10 @@
                                     style="flex-grow: 1; height: 26px; font-size: 0.75rem; padding: 0 5px;">
                                     <option value="studio">Studio (Neutral)</option>
                                     <option value="venice">Venice Sunset</option>
-                                    <option value="esplanade">Royal Esplanade</option>
                                     <option value="overpass">Pedestrian Overpass</option>
+                                    <option value="custom">Load Custom HDR...</option>
                                 </select>
+                                <input type="file" id="custom-hdr-input" accept=".hdr" style="display:none">
                             </div>
                             <div class="popup-row">
                                 <span class="material-symbols-outlined" title="Exposure">exposure</span>
@@ -1199,8 +1200,27 @@
                 scene.environmentRotation.y = rad;
             });
             bind('env-hdr-select', e => {
-                settings.hdr = e.target.value;
-                applyHDR();
+                if (e.target.value === 'custom') {
+                    document.getElementById('custom-hdr-input').click();
+                } else {
+                    settings.hdr = e.target.value;
+                    applyHDR();
+                }
+            });
+
+            document.getElementById('custom-hdr-input').addEventListener('change', async (e) => {
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    const url = URL.createObjectURL(file);
+                    try {
+                        await loadHDRI(url);
+                        settings.hdr = 'studio'; // Don't persist blob URLs
+                        saveSettings();
+                    } catch (err) {
+                        console.error("Custom HDR failed:", err);
+                    }
+                    URL.revokeObjectURL(url);
+                }
             });
 
             document.getElementById('env-bg-chk').checked = settings.showBackground;
@@ -1254,10 +1274,9 @@
                 updateBackground();
             } else {
                 let url = '';
-                // Using URLs from three.js examples
-                if (settings.hdr === 'venice') url = 'https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr';
-                if (settings.hdr === 'esplanade') url = 'https://threejs.org/examples/textures/equirectangular/royal_esplanade_1k.hdr';
-                if (settings.hdr === 'overpass') url = 'https://threejs.org/examples/textures/equirectangular/pedestrian_overpass_1k.hdr';
+                // Using verified URLs from Three.js examples repository
+                if (settings.hdr === 'venice') url = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/venice_sunset_1k.hdr';
+                if (settings.hdr === 'overpass') url = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/pedestrian_overpass_1k.hdr';
 
                 if (url) {
                     try {
@@ -2338,6 +2357,9 @@
                     if (ntex) {
                         mat.normalMap = ntex;
                         mat.normalScale.set(1, 1);
+                        // X-Plane normal maps use R and G channels for normal vector
+                        ntex.colorSpace = THREE.NoColorSpace;
+                        ntex.channel = 0; // R channel
                     }
 
                     // 3. PBR Maps (MAT)
