@@ -958,6 +958,7 @@
                             <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
                                     Background</label></div>
                         </div>
+                        <button id="restore-defaults-btn" class="btn btn-danger" style="margin-top: 10px; width: 100%;">Restore Defaults</button>
                     </div>
                 </div>
 
@@ -1087,7 +1088,7 @@
         let filesLoadedCount = 0;
 
         // Settings (Defaults)
-        const settings = {
+        const defaultSettings = {
             exposure: 1.0,
             rough: 1.0, metal: 0.0, lit: 1.0,
             envIntensity: 0.8,
@@ -1099,6 +1100,8 @@
             ssBgColor1: '#121212',
             ssBgColor2: '#050505'
         };
+
+        const settings = { ...defaultSettings };
 
         // Lights
         let headlight, ambientLight, mainLight;
@@ -1423,6 +1426,40 @@
             });
 
             updateColorUI();
+
+            document.getElementById('restore-defaults-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm('Restore all settings to default?')) {
+                    Object.assign(settings, defaultSettings);
+                    
+                    // Update UI elements
+                    setVal('mat-rough', settings.rough);
+                    setVal('mat-metal', settings.metal);
+                    setVal('mat-lit', settings.lit);
+                    setVal('cam-exposure', settings.exposure);
+                    setVal('env-intensity', settings.envIntensity);
+                    setVal('env-rotation', settings.rotation);
+                    setVal('env-hdr-select', settings.hdr);
+                    document.getElementById('env-bg-chk').checked = settings.showBackground;
+                    ssBgMode.value = settings.ssBgMode;
+                    colorIn1.value = settings.ssBgColor1;
+                    colorIn2.value = settings.ssBgColor2;
+                    
+                    // Trigger Updates
+                    renderer.toneMappingExposure = settings.exposure;
+                    scene.environmentIntensity = settings.envIntensity;
+                    const rad = settings.rotation * (Math.PI / 180);
+                    scene.backgroundRotation.y = rad;
+                    scene.environmentRotation.y = rad;
+                    
+                    updateMaterialProperties();
+                    updateBackground();
+                    applyHDR();
+                    updateColorUI();
+                    
+                    saveSettings();
+                }
+            });
 
             // Close popups on click outside
             window.addEventListener('click', (e) => {
