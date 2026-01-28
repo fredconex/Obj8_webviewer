@@ -1590,6 +1590,26 @@
                 const oldRecord = loadedObjects[existingIdx];
                 // Remove from scene & solo
                 rootGroup.remove(oldRecord.group);
+
+                // Cleanup animations and skeletons for this object
+                animationControllers = animationControllers.filter(c => {
+                    let curr = c.target;
+                    while (curr) {
+                        if (curr === oldRecord.group) return false;
+                        curr = curr.parent;
+                    }
+                    return true;
+                });
+
+                skeletonHelpers = skeletonHelpers.filter(h => {
+                    let curr = h;
+                    while (curr) {
+                        if (curr === oldRecord.group) return false;
+                        curr = curr.parent;
+                    }
+                    return true;
+                });
+
                 if (oldRecord.group.geometry) oldRecord.group.geometry.dispose(); // Group doesn't have geometry but children do
                 oldRecord.group.traverse(c => {
                     if (c.geometry) c.geometry.dispose();
@@ -1941,10 +1961,16 @@
             [...gui.controllers].forEach(c => c.destroy());
             guiControllers = [];
 
-            // Calculate Usage Counts
+            // Calculate Usage Counts (by number of meshes affected)
             const drefCounts = {};
             animationControllers.forEach(c => {
-                if (c.dref) drefCounts[c.dref] = (drefCounts[c.dref] || 0) + 1;
+                if (c.dref) {
+                    let meshCount = 0;
+                    c.target.traverse(obj => {
+                        if (obj.isMesh && !obj._isSelectionHelper) meshCount++;
+                    });
+                    drefCounts[c.dref] = (drefCounts[c.dref] || 0) + meshCount;
+                }
             });
 
             const sortedKeys = Array.from(datarefRanges.keys()).sort();
