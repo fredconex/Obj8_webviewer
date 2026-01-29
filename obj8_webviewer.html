@@ -719,10 +719,6 @@
             transform: scale(0.95);
         }
 
-        #settings-popup {
-            /* Now using .popup-menu styles */
-        }
-
         .popup-section h3 {
             margin: 0 0 8px 0;
             font-size: 0.7rem;
@@ -1920,6 +1916,14 @@
             for (const file of objFiles) {
                 const text = await file.text();
                 parseOBJ8(text, file.name);
+
+                // Update guiData for new animations immediately so they render correctly during loading
+                animationControllers.forEach(ctrl => {
+                    if (ctrl.dref && guiData[ctrl.dref] === undefined) {
+                        guiData[ctrl.dref] = 0;
+                    }
+                });
+
                 loadedFiles++;
                 updateProgress();
                 // Recenter camera after each object is loaded
