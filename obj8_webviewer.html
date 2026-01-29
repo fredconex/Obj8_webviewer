@@ -1095,6 +1095,7 @@
             envIntensity: 0.8,
             rotation: 0,
             showBackground: false,
+            showGrid: true,
             hdr: 'studio',
             ssBgMode: 'transparent',
             ssMultiplier: 1,
@@ -1341,11 +1342,17 @@
             // Toolbar Buttons
             const gridBtn = document.getElementById('toggle-grid-btn');
             gridBtn.addEventListener('click', () => {
-                worldGrid.visible = !worldGrid.visible;
-                worldAxes.visible = worldGrid.visible;
-                gridBtn.classList.toggle('active', worldGrid.visible);
+                settings.showGrid = !settings.showGrid;
+                worldGrid.visible = settings.showGrid;
+                worldAxes.visible = settings.showGrid;
+                gridBtn.classList.toggle('active', settings.showGrid);
+                saveSettings();
             });
-            gridBtn.classList.toggle('active', true); // Default on
+            
+            // Set initial state from settings
+            worldGrid.visible = settings.showGrid;
+            worldAxes.visible = settings.showGrid;
+            gridBtn.classList.toggle('active', settings.showGrid);
 
             const skelBtn = document.getElementById('toggle-skeleton-btn');
             skelBtn.addEventListener('click', () => {
@@ -1466,6 +1473,11 @@
                     updateBackground();
                     applyHDR();
                     updateColorUI();
+                    
+                    // Reset Grid State
+                    worldGrid.visible = settings.showGrid;
+                    worldAxes.visible = settings.showGrid;
+                    document.getElementById('toggle-grid-btn').classList.toggle('active', settings.showGrid);
                     
                     saveSettings();
                 }
