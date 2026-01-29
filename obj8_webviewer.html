@@ -56,17 +56,44 @@
 
         /* --- SIDEBAR (Left) --- */
         #sidebar {
+            position: absolute;
+            top: 15px;
+            left: 15px;
             width: 320px;
-            background: var(--panel-bg);
-            border-right: 1px solid var(--border-color);
+            height: calc(100% - 30px);
             display: flex;
             flex-direction: column;
-            flex-shrink: 0;
-            z-index: 10;
-            padding: 15px;
-            box-sizing: border-box;
+            gap: 10px;
+            z-index: 20;
+            pointer-events: none;
             transition: transform 0.3s;
-            user-select: none;
+        }
+
+        .glass-panel {
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(8px);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+        }
+
+        #sidebar-header {
+            padding: 12px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        #sidebar-content {
+            flex-grow: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            padding-top: 5px;
+            overflow: hidden;
         }
 
         /* --- MAIN VIEWPORT --- */
@@ -75,6 +102,7 @@
             position: relative;
             overflow: hidden;
             background: #0f0f0f;
+            width: 100vw; /* Force full width now that sidebar is overlay */
         }
 
         /* --- OVERLAY CONTROLS (Right - DataRefs) --- */
@@ -83,7 +111,7 @@
             top: 15px;
             right: 15px;
             width: 320px;
-            max-height: 90vh;
+            max-height: calc(100vh - 30px); /* Match sidebar height logic */
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -196,20 +224,19 @@
 
         /* --- TYPOGRAPHY & ELEMENTS --- */
         h1 {
-            margin: 0 0 15px 0;
+            margin: 0;
             font-size: 1rem;
             color: #fff;
             text-transform: uppercase;
             letter-spacing: 1px;
-            border-bottom: 2px solid var(--accent);
-            padding-bottom: 8px;
+            padding-bottom: 0;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         h2 {
-            margin: 15px 0 8px 0;
+            margin: 10px 0 8px 5px;
             font-size: 0.75rem;
             color: var(--text-muted);
             text-transform: uppercase;
@@ -237,12 +264,13 @@
             min-height: 100px;
             display: flex;
             flex-direction: column;
-            margin-bottom: 10px;
+            margin-bottom: 0;
+            overflow: hidden;
         }
 
         #obj-list-container {
-            border: 1px solid var(--border-color);
-            background: #161616;
+            border: none;
+            background: transparent;
             overflow-y: auto;
             border-radius: 4px;
             flex-grow: 1;
@@ -593,7 +621,7 @@
         #viewport-toolbar {
             position: absolute;
             top: 15px;
-            left: 15px;
+            left: 350px;
             display: flex;
             gap: 6px;
             z-index: 100;
@@ -668,7 +696,7 @@
             position: absolute;
             top: 70px;
             /* Below toolbar */
-            left: 15px;
+            left: 350px;
             background: rgba(0, 0, 0, 0.0);
             /* Transparent as requested */
             padding: 0;
@@ -858,23 +886,27 @@
     <div id="app-container">
         <!-- SIDEBAR -->
         <div id="sidebar" class="hidden-ui">
-            <h1>OBJ8
-                <div style="display:flex; gap:6px;">
-                    <label class="btn"
-                        style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                        <span>Import</span>
-                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple
-                            style="display:none">
-                    </label>
-                    <button class="btn btn-danger" id="clear-btn" name="clear-btn"
-                        style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
-                </div>
-            </h1>
+            <div id="sidebar-header" class="glass-panel">
+                <h1>OBJ8
+                    <div style="display:flex; gap:6px;">
+                        <label class="btn"
+                            style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                            <span>Import</span>
+                            <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple
+                                style="display:none">
+                        </label>
+                        <button class="btn btn-danger" id="clear-btn" name="clear-btn"
+                            style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
+                    </div>
+                </h1>
+            </div>
 
-            <h2>Objects</h2>
-            <div id="obj-list-wrapper">
-                <div id="obj-list-container">
-                    <!-- Items injected by JS -->
+            <div id="sidebar-content" class="glass-panel">
+                <h2>Objects</h2>
+                <div id="obj-list-wrapper">
+                    <div id="obj-list-container">
+                        <!-- Items injected by JS -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -998,7 +1030,7 @@
                 <div class="stat-line">Anims: <span id="a-count" class="val">0</span></div>
             </div>
             <!-- VIEWPORT ACTIONS -->
-            <div style="position: absolute; bottom: 20px; left: 20px; z-index: 100; display: flex; gap: 8px;">
+            <div style="position: absolute; bottom: 20px; left: 350px; z-index: 100; display: flex; gap: 8px;">
                 <button id="hide-sel-btn" class="icon-btn-tool"
                     style="width: auto; background: rgba(0,0,0,0.5); border: 1px solid #444;" title="Hide Selected (H)">
                     Hide
