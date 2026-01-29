@@ -2657,7 +2657,7 @@
             if (!materialCache.has(cacheKey)) {
                 let mat;
                 const standardProps = { 
-                    side: THREE.DoubleSide,
+                    side: THREE.BackSide,
                     transparent: false,
                     alphaToCoverage: isTransparent,
                     polygonOffset: polyOS !== 0,
