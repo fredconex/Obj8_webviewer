@@ -1891,6 +1891,7 @@
                         const isMatMap = f.name.toLowerCase().includes('_mat');
                         tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
                         tex.name = f.name.toLowerCase();
+                        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
                         if (!isDDS) {
                             // Standard images need flipping to match OpenGL UVs
