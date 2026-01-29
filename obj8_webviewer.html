@@ -2218,15 +2218,20 @@
             const geo = new THREE.BufferGeometry();
             const pos = [], norm = [], uv = [];
 
-            for (let k = 0; k < count; k++) {
-                let vIdx = offset + k;
-                if (indices.length > 0) vIdx = (vIdx < indices.length) ? indices[vIdx] : 0;
-                if (vIdx < vertices.length) {
-                    const v = vertices[vIdx];
-                    pos.push(v.x, v.y, v.z);
-                    // Always invert normals as OBJ8 usually expects a different orientation than default Three.js
-                    norm.push(-v.nx, -v.ny, -v.nz);
-                    uv.push(v.u, v.v);
+            for (let k = 0; k < count; k += 3) {
+                // Invert face winding: 0, 2, 1
+                const trip = [0, 2, 1];
+                for (let t = 0; t < 3; t++) {
+                    if (k + trip[t] >= count) continue;
+
+                    let vIdx = offset + k + trip[t];
+                    if (indices.length > 0) vIdx = (vIdx < indices.length) ? indices[vIdx] : 0;
+                    if (vIdx < vertices.length) {
+                        const v = vertices[vIdx];
+                        pos.push(v.x, v.y, v.z);
+                        norm.push(v.nx, v.ny, v.nz);
+                        uv.push(v.u, v.v);
+                    }
                 }
             }
             if (pos.length > 0) {
@@ -2657,7 +2662,7 @@
             if (!materialCache.has(cacheKey)) {
                 let mat;
                 const standardProps = { 
-                    side: THREE.BackSide,
+                    side: THREE.FrontSide,
                     transparent: false,
                     alphaToCoverage: isTransparent,
                     polygonOffset: polyOS !== 0,
