@@ -897,6 +897,9 @@
                         </label>
                         <button class="btn btn-danger" id="clear-btn" name="clear-btn"
                             style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
+                        <label class="chk-label" style="margin: 0; font-size: 0.7rem; display: flex; align-items: center; color: var(--text-muted); cursor: pointer; margin-left: 8px;" title="Automatically reload files when they change on disk">
+                            <input type="checkbox" id="live-toggle" style="margin-right: 4px;"> LIVE
+                        </label>
                     </div>
                 </h1>
             </div>
@@ -1111,6 +1114,7 @@
         let soloObjects = new Set(); // Multi-select Set
         let isShiftDown = false; // Global Shift Tracking
         let isSpaceDown = false; // Global Space Tracking
+        let fileHandleMap = new Map(); // Filename -> {handle, lastModified}
 
         // Resources
         let loadedTextures = new Map();
@@ -1129,6 +1133,7 @@
             showBackground: false,
             showGrid: true,
             hdr: 'studio',
+            live: false,
             ssBgMode: 'transparent',
             ssMultiplier: 1,
             ssBgColor1: '#121212',
@@ -1267,7 +1272,46 @@
             window.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor = '#4db8ff'; });
             window.addEventListener('dragleave', e => { drop.style.borderColor = '#555'; });
             window.addEventListener('drop', handleDrop);
-            document.getElementById('file-input').addEventListener('change', handleFile);
+            
+            const fileInput = document.getElementById('file-input');
+            const importInput = document.getElementById('import-input');
+            
+            fileInput.addEventListener('change', handleFile);
+            importInput.addEventListener('change', handleFile);
+
+            // Enhance with FileSystem API if available
+            if (window.showOpenFilePicker) {
+                const setupPicker = (el) => {
+                    const label = el.parentElement;
+                    label.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        try {
+                            const handles = await window.showOpenFilePicker({
+                                multiple: true,
+                                types: [{
+                                    description: 'OBJ and Textures',
+                                    accept: { 
+                                        'text/plain': ['.obj'], 
+                                        'image/*': ['.png', '.jpg', '.jpeg', '.bmp', '.hdr', '.dds'] 
+                                    }
+                                }]
+                            });
+                            const files = [];
+                            for (const handle of handles) {
+                                const file = await handle.getFile();
+                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified });
+                                files.push(file);
+                            }
+                            if (files.length) processFiles(files);
+                        } catch (err) { /* Cancelled */ }
+                    });
+                };
+                setupPicker(fileInput);
+                setupPicker(importInput);
+            }
+
+            // Live Reload Interval
+            setInterval(checkLiveReload, 1000);
 
             // Button Logic
             document.getElementById('recenter-btn').addEventListener('click', (e) => { e.stopPropagation(); centerCamera(); });
@@ -1368,6 +1412,12 @@
             document.getElementById('env-bg-chk').addEventListener('change', e => {
                 settings.showBackground = e.target.checked;
                 updateBackground();
+                saveSettings();
+            });
+
+            document.getElementById('live-toggle').checked = settings.live;
+            document.getElementById('live-toggle').addEventListener('change', e => {
+                settings.live = e.target.checked;
                 saveSettings();
             });
 
@@ -1835,6 +1885,7 @@
             guiControllers = [];
             loadedObjects = [];
             soloObjects.clear();
+            fileHandleMap.clear();
             lastVisibilityMap = null;
 
             materialCache.clear();
@@ -1860,14 +1911,38 @@
             updateStats();
         }
 
-        function handleDrop(e) {
+        async function handleDrop(e) {
             e.preventDefault();
             document.getElementById('drop-target').style.borderColor = '#555';
-            if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+            
+            const files = [];
+            if (e.dataTransfer.items) {
+                for (const item of e.dataTransfer.items) {
+                    if (item.kind === 'file') {
+                        if (typeof item.getAsFileSystemHandle === 'function') {
+                            const handle = await item.getAsFileSystemHandle();
+                            if (handle && handle.kind === 'file') {
+                                const file = await handle.getFile();
+                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified });
+                                files.push(file);
+                                continue;
+                            }
+                        }
+                        const file = item.getAsFile();
+                        if (file) files.push(file);
+                    }
+                }
+            } else if (e.dataTransfer.files.length) {
+                for (const file of e.dataTransfer.files) {
+                    files.push(file);
+                }
+            }
+
+            if (files.length) processFiles(files);
         }
         function handleFile(e) { if (e.target.files.length) processFiles(e.target.files); }
 
-        async function processFiles(files) {
+        async function processFiles(files, silent = false) {
             if (filesLoadedCount === 0) {
                 document.getElementById('upload-overlay').classList.add('hidden');
                 document.getElementById('sidebar').classList.remove('hidden-ui');
@@ -1884,8 +1959,10 @@
             const loadingText = document.getElementById('loading-bar-text');
             const viewport = document.getElementById('viewport');
 
-            loadingContainer.classList.add('active');
-            viewport.classList.add('loading');
+            if (!silent) {
+                loadingContainer.classList.add('active');
+                viewport.classList.add('loading');
+            }
 
             // Count total files to load
             const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
@@ -1895,6 +1972,7 @@
             let loadedFiles = 0;
 
             const updateProgress = () => {
+                if (silent) return;
                 const percent = (loadedFiles / totalFiles) * 100;
                 loadingFill.style.width = percent + '%';
                 loadingText.textContent = `${loadedFiles} / ${totalFiles}`;
@@ -1972,7 +2050,7 @@
                 loadedFiles++;
                 updateProgress();
                 // Recenter camera after each object is loaded
-                centerCamera();
+                if (!silent) centerCamera();
             }
 
             // 3. Finalize UI and View
@@ -1981,11 +2059,13 @@
             updateStats();
 
             // Hide loading bar, remove blur, and center camera after scene updates
-            setTimeout(() => {
-                loadingContainer.classList.remove('active');
-                viewport.classList.remove('loading');
-                centerCamera();
-            }, 500);
+            if (!silent) {
+                setTimeout(() => {
+                    loadingContainer.classList.remove('active');
+                    viewport.classList.remove('loading');
+                    centerCamera();
+                }, 500);
+            }
         }
 
         // --- PARSER ---
@@ -2850,6 +2930,25 @@
             records.forEach(rec => {
                 parseOBJ8(rec.text, rec.name);
             });
+        }
+
+        async function checkLiveReload() {
+            if (!settings.live) return;
+            
+            for (const [name, info] of fileHandleMap.entries()) {
+                try {
+                    const file = await info.handle.getFile();
+                    if (file.lastModified > info.lastModified) {
+                        info.lastModified = file.lastModified;
+                        console.log(`Live Reloading: ${name}`);
+                        // Reload in silent mode to avoid constant loading bars/recentering
+                        await processFiles([file], true);
+                    }
+                } catch (err) {
+                    // This can happen if file is locked or deleted
+                    console.warn(`Failed to check live reload for ${name}`, err);
+                }
+            }
         }
 
         function addSkeletonHelper(group, color, size) {
