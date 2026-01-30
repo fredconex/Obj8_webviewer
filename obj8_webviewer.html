@@ -1299,7 +1299,7 @@
                             const files = [];
                             for (const handle of handles) {
                                 const file = await handle.getFile();
-                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified });
+                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified, size: file.size });
                                 files.push(file);
                             }
                             if (files.length) processFiles(files);
@@ -1916,17 +1916,28 @@
             document.getElementById('drop-target').style.borderColor = '#555';
             
             const files = [];
+            
+            const processEntry = async (entry) => {
+                if (entry.kind === 'file') {
+                    const file = await entry.getFile();
+                    fileHandleMap.set(file.name, { handle: entry, lastModified: file.lastModified, size: file.size });
+                    files.push(file);
+                } else if (entry.kind === 'directory') {
+                    // Store directory handle to monitor for new/replaced files
+                    fileHandleMap.set(entry.name, { handle: entry, isDirectory: true });
+                    for await (const childEntry of entry.values()) {
+                        await processEntry(childEntry);
+                    }
+                }
+            };
+
             if (e.dataTransfer.items) {
                 for (const item of e.dataTransfer.items) {
                     if (item.kind === 'file') {
                         if (typeof item.getAsFileSystemHandle === 'function') {
                             const handle = await item.getAsFileSystemHandle();
-                            if (handle && handle.kind === 'file') {
-                                const file = await handle.getFile();
-                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified });
-                                files.push(file);
-                                continue;
-                            }
+                            if (handle) await processEntry(handle);
+                            continue;
                         }
                         const file = item.getAsFile();
                         if (file) files.push(file);
@@ -2935,19 +2946,49 @@
         async function checkLiveReload() {
             if (!settings.live) return;
             
+            const filesToReload = [];
+
             for (const [name, info] of fileHandleMap.entries()) {
                 try {
-                    const file = await info.handle.getFile();
-                    if (file.lastModified > info.lastModified) {
-                        info.lastModified = file.lastModified;
-                        console.log(`Live Reloading: ${name}`);
-                        // Reload in silent mode to avoid constant loading bars/recentering
-                        await processFiles([file], true);
+                    if (info.isDirectory) {
+                        // For directories, check all children that we care about
+                        for await (const entry of info.handle.values()) {
+                            if (entry.kind === 'file') {
+                                const file = await entry.getFile();
+                                // Only reload if it's a file we've already tracked or is an OBJ/Texture
+                                const isRelevant = /\.(obj|png|jpg|jpeg|bmp|dds|hdr)$/i.test(file.name);
+                                if (isRelevant) {
+                                    const tracked = fileHandleMap.get(file.name);
+                                    if (!tracked || file.lastModified !== tracked.lastModified || file.size !== tracked.size) {
+                                        fileHandleMap.set(file.name, { handle: entry, lastModified: file.lastModified, size: file.size });
+                                        filesToReload.push(file);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Individual file handle check
+                        const file = await info.handle.getFile();
+                        if (file.lastModified !== info.lastModified || file.size !== info.size) {
+                            info.lastModified = file.lastModified;
+                            info.size = file.size;
+                            filesToReload.push(file);
+                        }
                     }
                 } catch (err) {
-                    // This can happen if file is locked or deleted
-                    console.warn(`Failed to check live reload for ${name}`, err);
+                    // This can happen if a file is replaced (deleted and recreated)
+                    // If we have its parent directory tracked, the directory loop above will re-acquire it.
+                    // Otherwise, we notify that the link might be broken.
+                    if (!info.errorLogged) {
+                        console.warn(`Live link lost for ${name}. If you replaced the file, try dragging the parent folder instead for better stability.`, err);
+                        info.errorLogged = true;
+                    }
                 }
+            }
+
+            if (filesToReload.length > 0) {
+                console.log(`Live Reloading ${filesToReload.length} file(s)...`);
+                await processFiles(filesToReload, true);
             }
         }
 
