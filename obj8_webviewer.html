@@ -571,6 +571,49 @@
             }
         }
 
+        /* --- UPDATE NOTIFICATIONS --- */
+        #notification-container {
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        .update-toast {
+            background: rgba(25, 25, 25, 0.6);
+            color: var(--text-muted);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            animation: slideInLeft 0.3s ease-out, fadeOutDelayed 5s forwards;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(77, 184, 255, 0.1);
+            margin-top: 5px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .update-toast span.material-symbols-outlined {
+            font-size: 14px;
+            color: var(--accent);
+            opacity: 0.7;
+        }
+
+        @keyframes slideInLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes fadeOutDelayed {
+            0% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
         /* --- COLLAPSIBLE STATS --- */
         .collapsible-container {
             border: 1px solid var(--border-color);
@@ -911,6 +954,7 @@
                         <!-- Items injected by JS -->
                     </div>
                 </div>
+                <div id="notification-container"></div>
             </div>
         </div>
 
@@ -1115,6 +1159,7 @@
         let isShiftDown = false; // Global Shift Tracking
         let isSpaceDown = false; // Global Space Tracking
         let fileHandleMap = new Map(); // Filename -> {handle, lastModified}
+        let lastUsedHandle = null; // Track last used folder/file for picker
 
         // Resources
         let loadedTextures = new Map();
@@ -1286,7 +1331,8 @@
                     label.addEventListener('click', async (e) => {
                         e.preventDefault();
                         try {
-                            const handles = await window.showOpenFilePicker({
+                            const pickerOptions = {
+                                id: 'obj8_viewer_import',
                                 multiple: true,
                                 types: [{
                                     description: 'OBJ and Textures',
@@ -1295,13 +1341,17 @@
                                         'image/*': ['.png', '.jpg', '.jpeg', '.bmp', '.hdr', '.dds'] 
                                     }
                                 }]
-                            });
+                            };
+                            if (lastUsedHandle) pickerOptions.startIn = lastUsedHandle;
+
+                            const handles = await window.showOpenFilePicker(pickerOptions);
                             const files = [];
                             for (const handle of handles) {
                                 const file = await handle.getFile();
                                 fileHandleMap.set(file.name, { handle, lastModified: file.lastModified, size: file.size });
                                 files.push(file);
                             }
+                            if (handles.length > 0) lastUsedHandle = handles[0];
                             if (files.length) processFiles(files);
                         } catch (err) { /* Cancelled */ }
                     });
@@ -1922,9 +1972,11 @@
                     const file = await entry.getFile();
                     fileHandleMap.set(file.name, { handle: entry, lastModified: file.lastModified, size: file.size });
                     files.push(file);
+                    if (!lastUsedHandle) lastUsedHandle = entry;
                 } else if (entry.kind === 'directory') {
                     // Store directory handle to monitor for new/replaced files
                     fileHandleMap.set(entry.name, { handle: entry, isDirectory: true });
+                    lastUsedHandle = entry;
                     for await (const childEntry of entry.values()) {
                         await processEntry(childEntry);
                     }
@@ -2989,6 +3041,7 @@
             if (filesToReload.length > 0) {
                 console.log(`Live Reloading ${filesToReload.length} file(s)...`);
                 await processFiles(filesToReload, true);
+                showUpdateNotification(filesToReload);
             }
         }
 
@@ -3368,6 +3421,30 @@
                     inactiveItems.forEach(item => container.appendChild(item.controller.domElement));
                 }
             }
+        }
+
+        function showUpdateNotification(files) {
+            const container = document.getElementById('notification-container');
+            const toast = document.createElement('div');
+            toast.className = 'update-toast';
+            
+            const icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined';
+            icon.textContent = 'sync';
+            
+            const text = document.createElement('span');
+            if (files.length === 1) {
+                text.textContent = `Updated: ${files[0].name}`;
+            } else {
+                text.textContent = `${files.length} files updated`;
+            }
+            
+            toast.appendChild(icon);
+            toast.appendChild(text);
+            container.appendChild(toast);
+            
+            // Remove after animation finishes
+            setTimeout(() => toast.remove(), 5500);
         }
 
         function showToast(msg) {
