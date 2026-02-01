@@ -1033,6 +1033,7 @@
                             </div>
                             <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
                                     Background</label></div>
+                            <div class="popup-row"><label class="chk-label"><input type="checkbox" id="show-disabled-chk"> Show Disabled Meshes</label></div>
                         </div>
                         <button id="restore-defaults-btn" class="btn btn-danger" style="margin-top: 10px; width: 100%;">Restore Defaults</button>
                     </div>
@@ -1177,6 +1178,7 @@
             rotation: 0,
             showBackground: false,
             showGrid: true,
+            showDisabled: false,
             hdr: 'studio',
             live: false,
             ssBgMode: 'transparent',
@@ -1465,6 +1467,13 @@
                 saveSettings();
             });
 
+            document.getElementById('show-disabled-chk').checked = settings.showDisabled;
+            document.getElementById('show-disabled-chk').addEventListener('change', e => {
+                settings.showDisabled = e.target.checked;
+                updateDisabledVisibility();
+                saveSettings();
+            });
+
             document.getElementById('live-toggle').checked = settings.live;
             document.getElementById('live-toggle').addEventListener('change', e => {
                 settings.live = e.target.checked;
@@ -1590,6 +1599,7 @@
                     setVal('env-rotation', settings.rotation);
                     setVal('env-hdr-select', settings.hdr);
                     document.getElementById('env-bg-chk').checked = settings.showBackground;
+                    document.getElementById('show-disabled-chk').checked = settings.showDisabled;
                     ssBgMode.value = settings.ssBgMode;
                     colorIn1.value = settings.ssBgColor1;
                     colorIn2.value = settings.ssBgColor2;
@@ -1603,6 +1613,7 @@
                     
                     updateMaterialProperties();
                     updateBackground();
+                    updateDisabledVisibility();
                     applyHDR();
                     updateColorUI();
                     
@@ -1911,6 +1922,14 @@
             updateDataRefVisibility();
         }
 
+        function updateDisabledVisibility() {
+            rootGroup.traverse(obj => {
+                if (obj.isMesh && obj._drawEnabled === false) {
+                    obj.visible = settings.showDisabled;
+                }
+            });
+        }
+
         function unhideAllMeshes() {
             // User requested to ONLY unhide meshes (the ones hidden with H), 
             // NOT objects (the ones hidden with the Eye icon or excluded by Solo).
@@ -1919,7 +1938,13 @@
 
             // 1. Reset all Meshes (in case individual meshes were hidden via 'Hide Selected')
             rootGroup.traverse(o => {
-                if (o.isMesh && !o._isSelectionHelper) o.visible = true;
+                if (o.isMesh && !o._isSelectionHelper) {
+                    if (o._drawEnabled === false) {
+                        o.visible = settings.showDisabled;
+                    } else {
+                        o.visible = true;
+                    }
+                }
             });
 
             // 2. Re-apply Object-level visibility (keeps hidden objects hidden)
@@ -2193,6 +2218,7 @@
             let useNormalMetalness = false;
             let currentBlend = true;
             let currentPolyOS = 0;
+            let currentDrawEnabled = true;
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
@@ -2225,7 +2251,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS, currentDrawEnabled);
                     }
                     else if (cmd === 'ATTR_blend') {
                         currentBlend = true;
@@ -2235,6 +2261,12 @@
                     }
                     else if (cmd === 'ATTR_poly_os') {
                         currentPolyOS = parseInt(tokens[1]) || 0;
+                    }
+                    else if (cmd === 'ATTR_draw_enable') {
+                        currentDrawEnabled = true;
+                    }
+                    else if (cmd === 'ATTR_draw_disable') {
+                        currentDrawEnabled = false;
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -2388,7 +2420,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS, drawEnabled) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -2432,6 +2464,8 @@
                 mesh._useNormalMetalness = useNormalMetalness;
                 mesh._isTransparent = isTransparent;
                 mesh._polyOS = polyOS;
+                mesh._drawEnabled = drawEnabled;
+                mesh.visible = drawEnabled || settings.showDisabled;
                 // Shadows removed
                 currentGroup().add(mesh);
             }
