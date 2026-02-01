@@ -386,6 +386,7 @@
             background: #902020;
         }
 
+        /* Modern styled toggle switches */
         .chk-label {
             font-size: 0.8rem;
             color: #ccc;
@@ -393,11 +394,52 @@
             align-items: center;
             margin-top: 6px;
             cursor: pointer;
+            position: relative;
+            user-select: none;
         }
-
-        .chk-label input {
+        
+        .chk-label input[type="checkbox"] {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+            margin: 0;
+        }
+        
+        .chk-label .toggle-switch {
+            width: 40px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            position: relative;
             margin-right: 8px;
-            accent-color: var(--accent);
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+        
+        .chk-label .toggle-switch::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #888;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s, background 0.3s;
+        }
+        
+        .chk-label input[type="checkbox"]:checked + .toggle-switch {
+            background: var(--accent);
+        }
+        
+        .chk-label input[type="checkbox"]:checked + .toggle-switch::before {
+            transform: translateX(20px);
+            background: #fff;
+        }
+        
+        .chk-label input[type="checkbox"]:focus + .toggle-switch {
+            box-shadow: 0 0 0 2px rgba(77, 184, 255, 0.3);
         }
 
         #view-mode-select {
@@ -941,7 +983,9 @@
                         <button class="btn btn-danger" id="clear-btn" name="clear-btn"
                             style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
                         <label class="chk-label" style="margin: 0; font-size: 0.7rem; display: flex; align-items: center; color: var(--text-muted); cursor: pointer; margin-left: 8px;" title="Automatically reload files when they change on disk">
-                            <input type="checkbox" id="live-toggle" style="margin-right: 4px;"> LIVE
+                            <input type="checkbox" id="live-toggle">
+                            <span class="toggle-switch"></span>
+                            LIVE
                         </label>
                     </div>
                 </h1>
@@ -1031,9 +1075,20 @@
                                 <span class="material-symbols-outlined" title="Env Rotation">360</span>
                                 <input type="range" id="env-rotation" min="0" max="360" step="1" title="Env Rotation">
                             </div>
-                            <div class="popup-row"><label class="chk-label"><input type="checkbox" id="env-bg-chk"> Show
-                                    Background</label></div>
-                            <div class="popup-row"><label class="chk-label"><input type="checkbox" id="show-disabled-chk"> Show Disabled Meshes</label></div>
+                            <div class="popup-row">
+                                <label class="chk-label">
+                                    <input type="checkbox" id="env-bg-chk">
+                                    <span class="toggle-switch"></span>
+                                    Show Background
+                                </label>
+                            </div>
+                            <div class="popup-row">
+                                <label class="chk-label">
+                                    <input type="checkbox" id="show-disabled-chk">
+                                    <span class="toggle-switch"></span>
+                                    Show Disabled Meshes
+                                </label>
+                            </div>
                         </div>
                         <button id="restore-defaults-btn" class="btn btn-danger" style="margin-top: 10px; width: 100%;">Restore Defaults</button>
                     </div>
