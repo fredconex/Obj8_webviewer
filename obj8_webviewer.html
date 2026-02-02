@@ -1339,7 +1339,7 @@
         </div>
         <div class="control-row" id="sel-manip-dref-row">
             <div class="control-label">
-                DataRef 
+                <span id="sel-manip-label-text">DataRef</span>
                 <span class="material-symbols-outlined icon-btn" id="sel-manip-copy-btn" style="font-size: 14px;" title="Copy DataRef">content_copy</span>
             </div>
             <div class="control-val" id="sel-manip-dref" style="word-break: break-all; font-size: 0.75rem;">--</div>
@@ -2084,6 +2084,9 @@
                 const m = mesh.userData.manip;
                 document.getElementById('sel-manip-type').textContent = m.type || 'Unknown';
                 
+                const labelText = document.getElementById('sel-manip-label-text');
+                if (labelText) labelText.textContent = m.isCommand ? 'Command' : 'DataRef';
+                
                 const drefContainer = document.getElementById('sel-manip-dref');
                 const rawDref = m.dref || 'N/A';
                 
@@ -2667,6 +2670,7 @@
                             let type = cmd.replace('ATTR_manip_', '');
                             let dref = 'N/A';
                             let tooltip = '';
+                            let isCommand = false;
 
                             switch (type) {
                                 case 'drag_xy':
@@ -2678,10 +2682,12 @@
                                     if (tokens.length >= 9) tooltip = tokens.slice(8).join(' ');
                                     break;
                                 case 'command':
+                                    isCommand = true;
                                     if (tokens.length >= 3) dref = tokens[2];
                                     if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
                                     break;
                                 case 'command_axis':
+                                    isCommand = true;
                                     if (tokens.length >= 7) dref = `${tokens[5]}, ${tokens[6]}`;
                                     if (tokens.length >= 8) tooltip = tokens.slice(7).join(' ');
                                     break;
@@ -2709,6 +2715,7 @@
                                 case 'command_knob':
                                 case 'command_switch_up_down':
                                 case 'command_switch_left_right':
+                                    isCommand = true;
                                     if (tokens.length >= 4) dref = `${tokens[2]}, ${tokens[3]}`;
                                     if (tokens.length >= 5) tooltip = tokens.slice(4).join(' ');
                                     break;
@@ -2721,13 +2728,16 @@
                                 case 'command_switch_left_right2':
                                 case 'command_switch_up_down2':
                                 case 'command_knob2':
+                                    isCommand = true;
                                     if (tokens.length >= 3) dref = tokens[2];
                                     if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
                                     break;
                                 case 'drag_rotate':
-                                    if (tokens.length >= 17) {
+                                    if (tokens.length >= 16) {
                                         dref = tokens[15];
-                                        if (tokens[16].toLowerCase() !== 'none') dref += `, ${tokens[16]}`;
+                                        if (tokens.length >= 17 && tokens[16].toLowerCase() !== 'none') {
+                                            dref += `, ${tokens[16]}`;
+                                        }
                                     }
                                     if (tokens.length >= 18) tooltip = tokens.slice(17).join(' ');
                                     break;
@@ -2736,10 +2746,10 @@
                                     if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
                                     break;
                             }
-                            currentManip = { type, dref, tooltip };
+                            currentManip = { type, dref, tooltip, isCommand };
                             // Also register datarefs so they appear in the GUI
-                            if (dref !== 'N/A') {
-                                dref.split(/[,/]/).forEach(d => registerDataRef(d.trim()));
+                            if (dref !== 'N/A' && !isCommand) {
+                                dref.split(/[,]/).forEach(d => registerDataRef(d.trim()));
                             }
                         }
                     }
