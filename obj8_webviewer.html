@@ -1327,7 +1327,28 @@
         </div>
     </div>
 
-    <!-- SELECTION PANEL REMOVED -->
+    <!-- SELECTION PANEL -->
+    <div id="selection-panel">
+        <div id="selection-header">
+            <span>Manipulator</span>
+            <span class="material-symbols-outlined close-selection" id="close-selection-btn">close</span>
+        </div>
+        <div class="control-row">
+            <div class="control-label">Type</div>
+            <div class="control-val" id="sel-manip-type">--</div>
+        </div>
+        <div class="control-row" id="sel-manip-dref-row">
+            <div class="control-label">
+                DataRef 
+                <span class="material-symbols-outlined icon-btn" id="sel-manip-copy-btn" style="font-size: 14px;" title="Copy DataRef">content_copy</span>
+            </div>
+            <div class="control-val" id="sel-manip-dref" style="word-break: break-all; font-size: 0.75rem;">--</div>
+        </div>
+        <div class="control-row" id="sel-manip-tooltip-row">
+            <div class="control-label">Tooltip</div>
+            <div class="control-val" id="sel-manip-tooltip" style="font-size: 0.75rem; color: #aaa;">--</div>
+        </div>
+    </div>
 
     <!-- UPLOAD SCREEN -->
     <div id="upload-overlay">
@@ -1900,6 +1921,19 @@
                     screenshotBtn.classList.remove('active');
                 }
             });
+
+            // Selection Panel Controls
+            document.getElementById('close-selection-btn').addEventListener('click', (e) => {
+                document.getElementById('selection-panel').classList.remove('active');
+            });
+
+            document.getElementById('sel-manip-copy-btn').addEventListener('click', (e) => {
+                const text = document.getElementById('sel-manip-dref').textContent;
+                if (text && text !== 'N/A') {
+                    navigator.clipboard.writeText(text);
+                    showToast('DataRef copied!');
+                }
+            });
         }
 
         async function applyHDR() {
@@ -2042,6 +2076,78 @@
             updateDataRefVisibility();
             updateStats();
             updateObjectListSelection();
+
+            // Manipulator Info Panel Update
+            const panel = document.getElementById('selection-panel');
+            // If single selection and has manip data
+            if (selectedMeshes.length === 1 && mesh.userData.manip) {
+                const m = mesh.userData.manip;
+                document.getElementById('sel-manip-type').textContent = m.type || 'Unknown';
+                
+                const drefContainer = document.getElementById('sel-manip-dref');
+                const rawDref = m.dref || 'N/A';
+                
+                // Check for multiple datarefs (split by comma ONLY)
+                const drefs = rawDref.split(',').map(d => d.trim()).filter(d => d.length > 0 && d !== 'N/A');
+                
+                drefContainer.innerHTML = ''; // Clear existing text
+                
+                drefs.forEach(d => {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.alignItems = 'center';
+                    row.style.justifyContent = 'space-between';
+                    row.style.marginBottom = '4px';
+                    row.style.background = 'rgba(255,255,255,0.05)';
+                    row.style.padding = '2px 4px';
+                    row.style.borderRadius = '4px';
+                    
+                    const text = document.createElement('span');
+                    text.textContent = d;
+                    text.style.wordBreak = 'break-all';
+                    text.style.marginRight = '6px';
+                    text.style.color = '#4db8ff'; // Accent color
+                    
+                    const btn = document.createElement('span');
+                    btn.className = 'material-symbols-outlined icon-btn';
+                    btn.textContent = 'content_copy';
+                    btn.style.fontSize = '14px';
+                    btn.title = 'Copy this DataRef';
+                    btn.style.cursor = 'pointer';
+                    btn.style.opacity = '0.7';
+                    
+                    btn.onmouseover = () => btn.style.opacity = '1';
+                    btn.onmouseout = () => btn.style.opacity = '0.7';
+                    
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(d);
+                        showToast('Copied: ' + d);
+                    };
+                    
+                    row.appendChild(text);
+                    row.appendChild(btn);
+                    drefContainer.appendChild(row);
+                });
+                
+                // Hide main header copy button as we ALWAYS have individual ones now
+                const mainCopyBtn = document.getElementById('sel-manip-copy-btn');
+                if(mainCopyBtn) mainCopyBtn.style.display = 'none';
+
+                const ttRow = document.getElementById('sel-manip-tooltip-row');
+                if (m.tooltip && m.tooltip.trim().length > 0) {
+                    document.getElementById('sel-manip-tooltip').textContent = m.tooltip;
+                    ttRow.style.display = 'flex';
+                } else {
+                    ttRow.style.display = 'none';
+                }
+
+                panel.classList.add('active');
+            } else {
+                // If appending or no manip data, we might want to hide it or keep showing last?
+                // For now, only show if single valid selection
+                if (!append) panel.classList.remove('active');
+            }
         }
 
         function addHighlight(mesh) {
@@ -2084,6 +2190,7 @@
             updateDataRefVisibility();
             updateStats();
             updateObjectListSelection();
+            document.getElementById('selection-panel').classList.remove('active');
         }
 
         function selectMeshesByDataRef(drefName) {
@@ -2482,6 +2589,8 @@
             let currentBlend = true;
             let currentPolyOS = 0;
             let currentDrawEnabled = true;
+            let currentManip = null;
+
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
@@ -2514,7 +2623,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS, currentDrawEnabled);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS, currentDrawEnabled, currentManip);
                     }
                     else if (cmd === 'ATTR_blend') {
                         currentBlend = true;
@@ -2530,6 +2639,109 @@
                     }
                     else if (cmd === 'ATTR_draw_disable') {
                         currentDrawEnabled = false;
+                    }
+                    else if (cmd.startsWith('ATTR_manip_') || cmd === 'ATTR_axis_detented' || cmd === 'ATTR_axis_detent_range') {
+                        if (cmd === 'ATTR_manip_none') {
+                            currentManip = null;
+                        } else if (cmd === 'ATTR_manip_noop') {
+                            let dref = (tokens.length > 1) ? tokens[1] : 'N/A';
+                            currentManip = { type: 'noop', dref: dref, tooltip: 'Clicks are swallowed' };
+                        } else if (cmd === 'ATTR_manip_wheel') {
+                            if (currentManip) currentManip.wheelDelta = tokens[1];
+                        } else if (cmd === 'ATTR_manip_keyframe') {
+                            if (currentManip) {
+                                if (!currentManip.keyframes) currentManip.keyframes = [];
+                                currentManip.keyframes.push({ val: tokens[1], angle: tokens[2] });
+                            }
+                        } else if (cmd === 'ATTR_axis_detented') {
+                            if (currentManip) {
+                                currentManip.detented = true;
+                                if (tokens.length >= 7) currentManip.detentDref = tokens[6];
+                            }
+                        } else if (cmd === 'ATTR_axis_detent_range') {
+                            if (currentManip) {
+                                if (!currentManip.detentRanges) currentManip.detentRanges = [];
+                                currentManip.detentRanges.push({ start: tokens[1], end: tokens[2], height: tokens[3] });
+                            }
+                        } else {
+                            let type = cmd.replace('ATTR_manip_', '');
+                            let dref = 'N/A';
+                            let tooltip = '';
+
+                            switch (type) {
+                                case 'drag_xy':
+                                    if (tokens.length >= 10) dref = `${tokens[8]}, ${tokens[9]}`;
+                                    if (tokens.length >= 11) tooltip = tokens.slice(10).join(' ');
+                                    break;
+                                case 'drag_axis':
+                                    if (tokens.length >= 8) dref = tokens[7];
+                                    if (tokens.length >= 9) tooltip = tokens.slice(8).join(' ');
+                                    break;
+                                case 'command':
+                                    if (tokens.length >= 3) dref = tokens[2];
+                                    if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
+                                    break;
+                                case 'command_axis':
+                                    if (tokens.length >= 7) dref = `${tokens[5]}, ${tokens[6]}`;
+                                    if (tokens.length >= 8) tooltip = tokens.slice(7).join(' ');
+                                    break;
+                                case 'push':
+                                    if (tokens.length >= 5) dref = tokens[4];
+                                    if (tokens.length >= 6) tooltip = tokens.slice(5).join(' ');
+                                    break;
+                                case 'radio':
+                                    if (tokens.length >= 4) dref = tokens[3];
+                                    if (tokens.length >= 5) tooltip = tokens.slice(4).join(' ');
+                                    break;
+                                case 'toggle':
+                                    if (tokens.length >= 5) dref = tokens[4];
+                                    if (tokens.length >= 6) tooltip = tokens.slice(5).join(' ');
+                                    break;
+                                case 'delta':
+                                case 'wrap':
+                                    if (tokens.length >= 7) dref = tokens[6];
+                                    if (tokens.length >= 8) tooltip = tokens.slice(7).join(' ');
+                                    break;
+                                case 'drag_axis_pix':
+                                    if (tokens.length >= 8) dref = tokens[7];
+                                    if (tokens.length >= 9) tooltip = tokens.slice(8).join(' ');
+                                    break;
+                                case 'command_knob':
+                                case 'command_switch_up_down':
+                                case 'command_switch_left_right':
+                                    if (tokens.length >= 4) dref = `${tokens[2]}, ${tokens[3]}`;
+                                    if (tokens.length >= 5) tooltip = tokens.slice(4).join(' ');
+                                    break;
+                                case 'axis_knob':
+                                case 'axis_switch_up_down':
+                                case 'axis_switch_left_right':
+                                    if (tokens.length >= 7) dref = tokens[6];
+                                    if (tokens.length >= 8) tooltip = tokens.slice(7).join(' ');
+                                    break;
+                                case 'command_switch_left_right2':
+                                case 'command_switch_up_down2':
+                                case 'command_knob2':
+                                    if (tokens.length >= 3) dref = tokens[2];
+                                    if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
+                                    break;
+                                case 'drag_rotate':
+                                    if (tokens.length >= 17) {
+                                        dref = tokens[15];
+                                        if (tokens[16].toLowerCase() !== 'none') dref += `, ${tokens[16]}`;
+                                    }
+                                    if (tokens.length >= 18) tooltip = tokens.slice(17).join(' ');
+                                    break;
+                                case 'device':
+                                    if (tokens.length >= 3) dref = tokens[2];
+                                    if (tokens.length >= 4) tooltip = tokens.slice(3).join(' ');
+                                    break;
+                            }
+                            currentManip = { type, dref, tooltip };
+                            // Also register datarefs so they appear in the GUI
+                            if (dref !== 'N/A') {
+                                dref.split(/[,/]/).forEach(d => registerDataRef(d.trim()));
+                            }
+                        }
                     }
                     else if (cmd === 'ANIM_begin') {
                         const g = new THREE.Group();
@@ -2683,7 +2895,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS, drawEnabled) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS, drawEnabled, manipData) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -2729,6 +2941,12 @@
                 mesh._polyOS = polyOS;
                 mesh._drawEnabled = drawEnabled;
                 mesh.visible = drawEnabled || settings.showDisabled;
+                
+                // Store Manipulator Data
+                if (manipData) {
+                    mesh.userData.manip = manipData;
+                }
+
                 // Shadows removed
                 currentGroup().add(mesh);
             }
