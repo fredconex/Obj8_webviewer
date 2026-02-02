@@ -952,6 +952,98 @@
             text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
             user-select: none;
         }
+
+        /* --- SHORTCUTS OVERLAY --- */
+        #shortcuts-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        #shortcuts-overlay.active {
+            display: flex;
+        }
+
+        #shortcuts-panel {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 30px;
+            width: 600px;
+            max-width: 90%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        #shortcuts-panel h2 {
+            margin-top: 0;
+            color: #fff;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .shortcut-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px 40px;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+
+        .key-badge {
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
+            color: #fff;
+            box-shadow: 0 2px 0 #111;
+            min-width: 20px;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .key-badge.large {
+            padding: 2px 12px;
+        }
+
+        .key-group {
+            display: flex;
+            gap: 4px;
+        }
+
+        #close-shortcuts {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            cursor: pointer;
+            color: #888;
+            transition: color 0.2s;
+        }
+
+        #close-shortcuts:hover {
+            color: #fff;
+        }
     </style>
 
     <script type="importmap">
@@ -1122,6 +1214,10 @@
                         </div>
                     </div>
                 </div>
+                <div style="position: relative;">
+                    <button id="shortcuts-btn" class="icon-btn-tool" title="Keyboard Shortcuts"><span
+                            class="material-symbols-outlined">keyboard</span></button>
+                </div>
             </div>
 
             <!-- STATS -->
@@ -1149,6 +1245,73 @@
                 </button>
             </div>
             <div id="branding">WebViewer by Dreamfoil Creations</div>
+        </div>
+    </div>
+
+    <!-- SHORTCUTS OVERLAY -->
+    <div id="shortcuts-overlay">
+        <div id="shortcuts-panel">
+            <span id="close-shortcuts" class="material-symbols-outlined">close</span>
+            <h2><span class="material-symbols-outlined">keyboard</span> Keyboard Shortcuts</h2>
+            <div class="shortcut-grid">
+                <!-- Navigation -->
+                <div class="shortcut-item">
+                    <span>Move Forward</span>
+                    <span class="key-badge">W</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Backward</span>
+                    <span class="key-badge">S</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Left</span>
+                    <span class="key-badge">A</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Right</span>
+                    <span class="key-badge">D</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Up</span>
+                    <span class="key-badge">E</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Down</span>
+                    <span class="key-badge">Q</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Move Faster</span>
+                    <span class="key-badge large">Shift</span>
+                </div>
+
+                <!-- Tools -->
+                <div class="shortcut-item">
+                    <span>Recenter Camera</span>
+                    <span class="key-badge">F</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Hide Selected</span>
+                    <span class="key-badge">H</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Isolate Selected</span>
+                    <div class="key-group">
+                        <span class="key-badge">Shift</span>
+                        <span class="key-badge">H</span>
+                    </div>
+                </div>
+                <div class="shortcut-item">
+                    <span>Unhide All</span>
+                    <div class="key-group">
+                        <span class="key-badge">Alt</span>
+                        <span class="key-badge">H</span>
+                    </div>
+                </div>
+                <div class="shortcut-item">
+                    <span>Show Hidden by Animation</span>
+                    <span class="key-badge large">Space</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1214,6 +1377,8 @@
         let soloObjects = new Set(); // Multi-select Set
         let isShiftDown = false; // Global Shift Tracking
         let isSpaceDown = false; // Global Space Tracking
+        let keyState = { w: false, a: false, s: false, d: false, q: false, e: false };
+        const moveSpeed = 0.01;
         let fileHandleMap = new Map(); // Filename -> {handle, lastModified}
         let lastUsedHandle = null; // Track last used folder/file for picker
 
@@ -1330,6 +1495,15 @@
             window.addEventListener('resize', onResize);
             window.addEventListener('keydown', e => {
                 if (e.key === 'Shift') isShiftDown = true;
+                
+                // Camera Movement Keys
+                const k = e.key.toLowerCase();
+                if (document.activeElement.tagName !== 'INPUT') {
+                    if (['w', 'a', 's', 'd', 'q', 'e'].includes(k)) {
+                        keyState[k] = true;
+                    }
+                }
+
                 if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
                     isSpaceDown = true;
                     e.preventDefault();
@@ -1351,11 +1525,18 @@
             });
             window.addEventListener('keyup', e => {
                 if (e.key === 'Shift') isShiftDown = false;
+                
+                const k = e.key.toLowerCase();
+                if (['w', 'a', 's', 'd', 'q', 'e'].includes(k)) {
+                    keyState[k] = false;
+                }
+
                 if (e.code === 'Space') isSpaceDown = false;
             });
             window.addEventListener('blur', () => {
                 isShiftDown = false;
                 isSpaceDown = false;
+                Object.keys(keyState).forEach(k => keyState[k] = false);
             });
             viewport.addEventListener('mousedown', (e) => {
                 mouseDownPos.x = e.clientX;
@@ -1598,6 +1779,33 @@
 
             capture1x.addEventListener('click', (e) => { e.stopPropagation(); performCapture(1); });
             capture2x.addEventListener('click', (e) => { e.stopPropagation(); performCapture(2); });
+
+            // Shortcuts Popup
+            const shortcutsBtn = document.getElementById('shortcuts-btn');
+            const shortcutsOverlay = document.getElementById('shortcuts-overlay');
+            const closeShortcuts = document.getElementById('close-shortcuts');
+
+            shortcutsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                shortcutsOverlay.classList.add('active');
+            });
+
+            closeShortcuts.addEventListener('click', () => {
+                shortcutsOverlay.classList.remove('active');
+            });
+
+            shortcutsOverlay.addEventListener('click', (e) => {
+                if (e.target === shortcutsOverlay) {
+                    shortcutsOverlay.classList.remove('active');
+                }
+            });
+
+            // Close on Escape
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    shortcutsOverlay.classList.remove('active');
+                }
+            });
 
             // Screenshot Settings Binding
             const ssBgMode = document.getElementById('ss-bg-mode');
@@ -3553,6 +3761,36 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // WASD Movement
+            if (keyState.w || keyState.s || keyState.a || keyState.d || keyState.q || keyState.e) {
+                // Calculate Speed - dynamic based on distance to target or fixed?
+                // Fixed is safer for "fly" mode usually, but scene scale varies.
+                // Let's use a base speed scaled by shift.
+                const speed = isShiftDown ? moveSpeed * 5 : moveSpeed;
+                
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                
+                const right = new THREE.Vector3();
+                right.crossVectors(dir, camera.up).normalize();
+
+                const moveVec = new THREE.Vector3();
+                
+                if (keyState.w) moveVec.add(dir);
+                if (keyState.s) moveVec.sub(dir);
+                if (keyState.d) moveVec.add(right);
+                if (keyState.a) moveVec.sub(right);
+                if (keyState.e) moveVec.add(camera.up); // Fly Up (World Up)
+                if (keyState.q) moveVec.sub(camera.up); // Fly Down
+
+                if (moveVec.lengthSq() > 0) {
+                    moveVec.normalize().multiplyScalar(speed);
+                    camera.position.add(moveVec);
+                    controls.target.add(moveVec);
+                }
+            }
+
             controls.update();
             for (const ctrl of animationControllers) {
                 const val = guiData[ctrl.dref];
