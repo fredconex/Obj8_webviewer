@@ -1108,6 +1108,7 @@
             <option value="lit_only">Lit Only</option>
             <option value="normals">Normals</option>
             <option value="wireframe">Wireframe</option>
+            <option value="manipulators">Manipulators</option>
         </select>
                 </div>
 
@@ -1640,6 +1641,7 @@
             document.getElementById('view-mode-select').addEventListener('change', (e) => {
                 currentViewMode = e.target.value;
                 refreshMaterials();
+                updateDisabledVisibility();
             });
 
             document.getElementById('stats-overlay').classList.remove('hidden-ui'); // Show stats
@@ -2016,6 +2018,10 @@
             // Filter out selection helpers and non-visible meshes from raycasting
             const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => {
                 if (i.object._isSelectionHelper || i.object.type !== 'Mesh') return false;
+                
+                // If in manipulators mode, only allow selecting meshes that have a manip
+                if (currentViewMode === 'manipulators' && !i.object.userData.manip) return false;
+
                 let curr = i.object;
                 while (curr && curr !== scene) {
                     if (!curr.visible) return false;
@@ -2298,7 +2304,7 @@
         function updateDisabledVisibility() {
             rootGroup.traverse(obj => {
                 if (obj.isMesh && obj._drawEnabled === false) {
-                    obj.visible = settings.showDisabled;
+                    obj.visible = (currentViewMode === 'manipulators') || settings.showDisabled;
                 }
             });
         }
@@ -2950,11 +2956,20 @@
                 mesh._isTransparent = isTransparent;
                 mesh._polyOS = polyOS;
                 mesh._drawEnabled = drawEnabled;
-                mesh.visible = drawEnabled || settings.showDisabled;
+                mesh.visible = drawEnabled || (currentViewMode === 'manipulators') || settings.showDisabled;
                 
                 // Store Manipulator Data
                 if (manipData) {
                     mesh.userData.manip = manipData;
+                }
+
+                // Handle Manipulator Mode View
+                if (currentViewMode === 'manipulators') {
+                    if (manipData) {
+                        mesh.material = new THREE.MeshBasicMaterial({ color: 0x9c27b0, wireframe: false, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+                    } else {
+                        mesh.material = new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true, transparent: true, opacity: 0.1 });
+                    }
                 }
 
                 // Shadows removed
@@ -3504,10 +3519,19 @@
         function refreshMaterials() {
             // Clear cache so we really fetch potentially new textures
             materialCache.clear();
+            
+            // Materials for Manipulator Mode
+            const manipMat = new THREE.MeshBasicMaterial({ color: 0x9c27b0, wireframe: false, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+            const nonManipMat = new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true, transparent: true, opacity: 0.1 });
+
             rootGroup.traverse(obj => {
                 if (obj.isMesh && !obj._isSelectionHelper) {
-                    const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent, pos = obj._polyOS;
-                    obj.material = getMaterial(t, l, n, m, tr, pos);
+                    if (currentViewMode === 'manipulators') {
+                        obj.material = obj.userData.manip ? manipMat : nonManipMat;
+                    } else {
+                        const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent, pos = obj._polyOS;
+                        obj.material = getMaterial(t, l, n, m, tr, pos);
+                    }
                 }
             });
         }
