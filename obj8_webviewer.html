@@ -1497,7 +1497,7 @@
             showBackground: false,
             showGrid: true,
             showDisabled: false,
-            showVRHotspots: true,
+            showVRHotspots: false,
             hdr: 'studio',
             live: false,
             ssBgMode: 'transparent',
@@ -2092,7 +2092,8 @@
 
             // Filter out selection helpers and non-visible meshes from raycasting
             const intersects = raycaster.intersectObjects(rootGroup.children, true).filter(i => {
-                if (i.object._isSelectionHelper || i.object.type !== 'Mesh') return false;
+                const isSystem = i.object.userData?.isSystem || i.object.userData?.isVRHotspot;
+                if (i.object._isSelectionHelper || i.object.type !== 'Mesh' || isSystem) return false;
 
                 // If in manipulators mode, only allow selecting meshes that have a manip
                 if (currentViewMode === 'manipulators' && !i.object.userData.manip) return false;
@@ -2333,7 +2334,8 @@
                 lastVisibilityMap = new Map();
                 const toKeep = new Set(selectedMeshes);
                 rootGroup.traverse(o => {
-                    if (o.isMesh && !o._isSelectionHelper) {
+                    const isSystem = o.userData?.isSystem || o.userData?.isVRHotspot;
+                    if (o.isMesh && !o._isSelectionHelper && !isSystem) {
                         lastVisibilityMap.set(o, o.visible);
                         o.visible = toKeep.has(o);
                     }
@@ -2386,7 +2388,7 @@
 
         function updateVRHotspotsVisibility() {
             if (vrHotspotsGroup) {
-                vrHotspotsGroup.visible = (currentViewMode === 'manipulators' && settings.showVRHotspots);
+                vrHotspotsGroup.visible = settings.showVRHotspots;
             }
         }
 
@@ -3103,7 +3105,26 @@
                     dir.applyEuler(rot);
 
                     // Longer arrow for clarity
-                    const arrow = new THREE.ArrowHelper(dir, worldPos, 0.6, arrowColor, 0.2, 0.15);
+                    const arrow = new THREE.ArrowHelper(dir, worldPos, 0.6, hpColor, 0.2, 0.15);
+
+                    // Force materials to be on top
+                    arrow.line.material = new THREE.LineBasicMaterial({
+                        color: hpColor,
+                        depthTest: false,
+                        depthWrite: false,
+                        transparent: true,
+                        opacity: 1.0
+                    });
+                    arrow.cone.material = new THREE.MeshBasicMaterial({
+                        color: hpColor,
+                        depthTest: false,
+                        depthWrite: false,
+                        transparent: true,
+                        opacity: 1.0
+                    });
+
+                    arrow.renderOrder = 999;
+                    hGroup.renderOrder = 999; // Ensure the whole subgroup is high priority
                     hGroup.add(arrow);
                 }
             });
