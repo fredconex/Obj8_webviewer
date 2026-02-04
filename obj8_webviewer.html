@@ -2861,14 +2861,15 @@
                     }
                     loadedCount++;
                     updateStats();
+
+                    // Initialize guiData for new animations after each object to ensure animations update during load
+                    animationControllers.forEach(ctrl => {
+                        if (ctrl.dref && guiData[ctrl.dref] === undefined) {
+                            guiData[ctrl.dref] = 0;
+                        }
+                    });
                 }
 
-                // Initialize guiData for new animations
-                animationControllers.forEach(ctrl => {
-                    if (ctrl.dref && guiData[ctrl.dref] === undefined) {
-                        guiData[ctrl.dref] = 0;
-                    }
-                });
                 buildGUI();
 
                 await loadVRConfig(dirHandle, file);
@@ -3883,6 +3884,10 @@
             // Record in the most recently added object (the one currently being parsed)
             if (loadedObjects.length > 0) {
                 loadedObjects[loadedObjects.length - 1].datarefs.add(name);
+            }
+
+            if (guiData[name] === undefined) {
+                guiData[name] = 0;
             }
 
             let entry = datarefRanges.get(name);
