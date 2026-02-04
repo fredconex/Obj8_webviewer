@@ -2913,7 +2913,7 @@
                                 // X-Plane: X=Right, Y=Up, Z=Aft
                                 // Three.js: X=Right, Y=Up, Z=Back (towards viewer)
                                 // Coordinate systems align for visualization if we treat +Z as Aft.
-                                rec.group.position.set(objDef.pos.x, objDef.pos.y, objDef.pos.z);
+                                rec.group.position.set(objDef.pos.x * 0.3048, objDef.pos.y * 0.3048, objDef.pos.z * 0.3048);
 
                                 // Rotation (Euler YXZ: Yaw, Pitch, Roll)
                                 const d2r = Math.PI / 180;
