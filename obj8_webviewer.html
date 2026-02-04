@@ -2776,6 +2776,14 @@
                     updateStats();
                 }
 
+                // Initialize guiData for new animations
+                animationControllers.forEach(ctrl => {
+                    if (ctrl.dref && guiData[ctrl.dref] === undefined) {
+                        guiData[ctrl.dref] = 0;
+                    }
+                });
+                buildGUI();
+
                 centerCamera();
                 refreshMaterials();
                 
@@ -2842,6 +2850,7 @@
         }
 
         async function loadReferencedTextures(text, dirHandle, objPath) {
+            console.log(`[TextureDebug] Scanning object: ${objPath}`);
             const lines = text.split(/\r?\n/);
             const textureNames = new Set();
             
@@ -2849,31 +2858,46 @@
             for(let i=0; i<Math.min(lines.length, 200); i++) {
                 const line = lines[i].split('#')[0].trim();
                 const parts = line.split(/\s+/);
-                if (['TEXTURE', 'TEXTURE_MAP', 'TEXTURE_LIT', 'TEXTURE_NORMAL'].includes(parts[0])) {
+                const cmd = parts[0];
+                if (['TEXTURE', 'TEXTURE_LIT', 'TEXTURE_NORMAL'].includes(cmd)) {
                     if (parts.length > 1) {
                         textureNames.add(parts[1]);
+                        console.log(`[TextureDebug] Found command: ${cmd} ${parts[1]}`);
+                    }
+                } else if (cmd === 'TEXTURE_MAP') {
+                    if (parts.length > 2) {
+                        textureNames.add(parts[2]);
+                        console.log(`[TextureDebug] Found command: TEXTURE_MAP ${parts[1]} ${parts[2]}`);
                     }
                 }
             }
 
             // Determine directory of the OBJ file relative to root
             const objDir = objPath.replace(/\\/g, '/').includes('/') ? objPath.replace(/\\/g, '/').substring(0, objPath.replace(/\\/g, '/').lastIndexOf('/')) : '';
+            console.log(`[TextureDebug] Object Directory: '${objDir}'`);
 
             const promises = [];
             for (const texName of textureNames) {
                 // If it looks like a default or placeholder, skip?
                 if (texName === 'none' || texName === 'default') continue;
-                if (loadedTextures.has(texName.toLowerCase())) continue;
+                if (loadedTextures.has(texName.toLowerCase())) {
+                    console.log(`[TextureDebug] Skipping already loaded: ${texName}`);
+                    continue;
+                }
 
                 promises.push((async () => {
                     let handle = null;
                     const relativePath = objDir ? `${objDir}/${texName}` : texName;
                     
+                    console.log(`[TextureDebug] Looking for '${texName}'...`);
+                    
                     // 1. Try relative to OBJ
+                    console.log(`[TextureDebug] Trying relative path: '${relativePath}'`);
                     handle = await findObjectFile(dirHandle, relativePath);
 
                     // 2. Try exact name in root / global lookup
                     if (!handle) {
+                        console.log(`[TextureDebug] Trying root/exact path: '${texName}'`);
                         handle = await findObjectFile(dirHandle, texName);
                     }
                     
@@ -2887,9 +2911,11 @@
                             // Skip if this is the extension we already tried
                             if (texName.toLowerCase().endsWith(ext)) continue;
 
+                            console.log(`[TextureDebug] Trying fallback extension: '${relBaseName + ext}'`);
                             handle = await findObjectFile(dirHandle, relBaseName + ext);
                             if (handle) break;
                             
+                            console.log(`[TextureDebug] Trying fallback extension (root): '${baseName + ext}'`);
                             handle = await findObjectFile(dirHandle, baseName + ext);
                             if (handle) break;
                         }
@@ -2897,11 +2923,14 @@
 
                     if (handle) {
                         try {
+                            console.log(`[TextureDebug] Found '${texName}'! Loading...`);
                             const file = await handle.getFile();
                             await loadTextureFile(file);
                         } catch (e) {
-                            console.warn("Failed to load texture file", texName, e);
+                            console.warn("[TextureDebug] Failed to load texture file", texName, e);
                         }
+                    } else {
+                        console.warn(`[TextureDebug] FAILED to find texture: '${texName}'`);
                     }
                 })());
             }
@@ -3031,10 +3060,18 @@
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
                 const parts = l.split(/\s+/);
-                if (parts[0] === 'TEXTURE' || parts[0] === 'TEXTURE_MAP') { currentTexture = parts[1]; }
-                if (parts[0] === 'TEXTURE_LIT') { litTexture = parts[1]; }
-                if (parts[0] === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
-                if (parts[0] === 'NORMAL_METALNESS') { useNormalMetalness = true; }
+                const cmd = parts[0];
+                if (cmd === 'TEXTURE') { currentTexture = parts[1]; }
+                if (cmd === 'TEXTURE_MAP' && parts.length > 2) {
+                    const type = parts[1];
+                    const file = parts[2];
+                    if (type === 'albedo') currentTexture = file;
+                    if (type === 'normal') normalTexture = file;
+                    if (type === 'emissive') litTexture = file;
+                }
+                if (cmd === 'TEXTURE_LIT') { litTexture = parts[1]; }
+                if (cmd === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
+                if (cmd === 'NORMAL_METALNESS') { useNormalMetalness = true; }
             }
 
             const groupStack = [{ object: fileGroup }];
