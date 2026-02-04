@@ -1044,6 +1044,9 @@
         #close-shortcuts:hover {
             color: #fff;
         }
+        .hidden-ui {
+            display: none !important;
+        }
     </style>
 
     <script type="importmap">
@@ -1066,12 +1069,26 @@
             <div id="sidebar-header" class="glass-panel">
                 <h1>OBJ8
                     <div style="display:flex; gap:6px;">
-                        <label class="btn"
-                            style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                            <span>Import</span>
-                            <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple
-                                style="display:none">
-                        </label>
+                        <div style="position: relative;">
+                            <button id="import-menu-btn" class="btn" style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem;">
+                                Import ▾
+                            </button>
+                            <!-- IMPORT POPUP -->
+                            <div id="import-popup" class="hidden popup-menu" style="left: 0; top: 100%; width: 180px; margin-top: 5px;">
+                                <div class="popup-section">
+                                    <label class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 0; border: none; background: transparent;">
+                                        <span class="material-symbols-outlined" style="font-size: 16px;">description</span>
+                                        <span>Select Files</span>
+                                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple style="display:none">
+                                    </label>
+                                    <button id="acf-btn" class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 5px 0 0 0; border: none; background: transparent;">
+                                        <span class="material-symbols-outlined" style="font-size: 16px;">folder_open</span>
+                                        <span>Open ACF Folder</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <button class="btn btn-danger" id="clear-btn" name="clear-btn"
                             style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
                         <label class="chk-label" style="margin: 0; font-size: 0.7rem; display: flex; align-items: center; color: var(--text-muted); cursor: pointer; margin-left: 8px;" title="Automatically reload files when they change on disk">
@@ -1249,6 +1266,17 @@
         </div>
     </div>
 
+    <!-- ACF SELECTION MODAL -->
+    <div id="acf-selection-overlay" class="hidden-ui" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 600; display: flex; align-items: center; justify-content: center;">
+        <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #444; width: 400px; max-width: 90%;">
+            <h3 style="margin-top: 0; color: #fff;">Select Aircraft File</h3>
+            <div id="acf-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin: 15px 0;">
+                <!-- Buttons injected here -->
+            </div>
+            <button class="btn btn-danger" onclick="document.getElementById('acf-selection-overlay').classList.add('hidden-ui')">Cancel</button>
+        </div>
+    </div>
+
     <!-- SHORTCUTS OVERLAY -->
     <div id="shortcuts-overlay">
         <div id="shortcuts-panel">
@@ -1356,11 +1384,24 @@
         <div class="drop-box" id="drop-target">
             <h2 style="color:#fff; margin-top:0;">X-Plane OBJ8 Viewer</h2>
             <p>Drag & Drop one or multiple .OBJ files</p>
-            <label for="file-input" class="btn" style="width: auto; display: inline-block; margin-top:15px;">
-                Browse Files
-                <input type="file" id="file-input" name="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds"
-                    multiple style="display:none">
-            </label>
+            <div style="position: relative; display: inline-block; margin-top: 15px;">
+                <button id="upload-import-btn" class="btn" style="width: auto; padding: 8px 20px;">
+                    Import ▾
+                </button>
+                <div id="upload-import-menu" class="hidden popup-menu" style="left: 50%; top: 100%; width: 180px; margin-top: 5px; margin-left: -90px; text-align: left;">
+                    <div class="popup-section">
+                        <label class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 0; border: none; background: transparent;">
+                            <span class="material-symbols-outlined" style="font-size: 16px;">description</span>
+                            <span>Select Files</span>
+                            <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple style="display:none">
+                        </label>
+                        <button id="upload-acf-btn" class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 5px 0 0 0; border: none; background: transparent;">
+                            <span class="material-symbols-outlined" style="font-size: 16px;">folder_open</span>
+                            <span>Open ACF Folder</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1581,8 +1622,41 @@
             const fileInput = document.getElementById('file-input');
             const importInput = document.getElementById('import-input');
             
-            fileInput.addEventListener('change', handleFile);
-            importInput.addEventListener('change', handleFile);
+            // Sidebar Import is handled in its specific block below
+            // Upload Screen Import Input
+            fileInput.addEventListener('change', (e) => {
+                handleFile(e);
+                const menu = document.getElementById('upload-import-menu');
+                if(menu) menu.classList.add('hidden');
+                const btn = document.getElementById('upload-import-btn');
+                if(btn) btn.classList.remove('active');
+            });
+
+            // Upload Screen Import Menu Logic
+            const upImportBtn = document.getElementById('upload-import-btn');
+            const upImportMenu = document.getElementById('upload-import-menu');
+            
+            if (upImportBtn && upImportMenu) {
+                upImportBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    upImportMenu.classList.toggle('hidden');
+                    upImportBtn.classList.toggle('active', !upImportMenu.classList.contains('hidden'));
+                });
+
+                document.getElementById('upload-acf-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    upImportMenu.classList.add('hidden');
+                    upImportBtn.classList.remove('active');
+                    openACFFolder();
+                });
+
+                window.addEventListener('click', (e) => {
+                    if (!upImportMenu.contains(e.target) && e.target !== upImportBtn && !upImportBtn.contains(e.target)) {
+                        upImportMenu.classList.add('hidden');
+                        upImportBtn.classList.remove('active');
+                    }
+                });
+            }
 
             // Enhance with FileSystem API if available
             if (window.showOpenFilePicker) {
@@ -1629,7 +1703,42 @@
             document.getElementById('isolate-sel-btn').addEventListener('click', (e) => { e.stopPropagation(); isolateSelectedMesh(); });
             document.getElementById('unhide-all-btn').addEventListener('click', (e) => { e.stopPropagation(); unhideAllMeshes(); });
             document.getElementById('clear-btn').addEventListener('click', resetViewer);
-            document.getElementById('import-input').addEventListener('change', handleFile);
+            document.getElementById('import-input').addEventListener('change', (e) => {
+                handleFile(e);
+                document.getElementById('import-popup').classList.add('hidden');
+                document.getElementById('import-menu-btn').classList.remove('active');
+            });
+
+            document.getElementById('acf-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('import-popup').classList.add('hidden');
+                document.getElementById('import-menu-btn').classList.remove('active');
+                openACFFolder();
+            });
+
+            // Import Menu Toggle
+            const importBtn = document.getElementById('import-menu-btn');
+            const importPop = document.getElementById('import-popup');
+            
+            importBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Close other popups
+                document.getElementById('settings-popup').classList.add('hidden');
+                document.getElementById('settings-btn').classList.remove('active');
+                document.getElementById('screenshot-popup').classList.add('hidden');
+                document.getElementById('screenshot-tool-btn').classList.remove('active');
+
+                importPop.classList.toggle('hidden');
+                importBtn.classList.toggle('active', !importPop.classList.contains('hidden'));
+            });
+
+            // Update global click listener to close import popup too
+            window.addEventListener('click', (e) => {
+                if (!importPop.contains(e.target) && e.target !== importBtn && !importBtn.contains(e.target)) {
+                    importPop.classList.add('hidden');
+                    importBtn.classList.remove('active');
+                }
+            });
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
             document.getElementById('search-clear').addEventListener('click', () => {
                 if (selectedMeshes.length > 0) {
@@ -2533,6 +2642,253 @@
                     centerCamera();
                 }, 500);
             }
+        }
+
+        // --- ACF HANDLING ---
+        async function openACFFolder() {
+            if (!window.showDirectoryPicker) {
+                alert("Your browser does not support the File System Access API (showDirectoryPicker).");
+                return;
+            }
+
+            try {
+                const dirHandle = await window.showDirectoryPicker({ id: 'acf_folder', mode: 'read' });
+                
+                // 1. Find .acf files
+                const acfFiles = [];
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.acf')) {
+                        acfFiles.push(entry);
+                    }
+                }
+
+                if (acfFiles.length === 0) {
+                    alert("No .acf files found in this folder.");
+                    return;
+                }
+
+                if (acfFiles.length === 1) {
+                    loadACF(acfFiles[0], dirHandle);
+                } else {
+                    showACFSelection(acfFiles, dirHandle);
+                }
+
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error("Error opening folder:", err);
+            }
+        }
+
+        function showACFSelection(files, dirHandle) {
+            const overlay = document.getElementById('acf-selection-overlay');
+            const list = document.getElementById('acf-list');
+            list.innerHTML = '';
+
+            files.forEach(file => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.textContent = file.name;
+                btn.onclick = () => {
+                    overlay.classList.add('hidden-ui');
+                    loadACF(file, dirHandle);
+                };
+                list.appendChild(btn);
+            });
+
+            overlay.classList.remove('hidden-ui');
+        }
+
+        async function loadACF(fileHandle, dirHandle) {
+            const loadingContainer = document.getElementById('loading-bar-container');
+            const loadingFill = document.getElementById('loading-bar-fill');
+            const loadingText = document.getElementById('loading-bar-text');
+            const viewport = document.getElementById('viewport');
+
+            try {
+                const file = await fileHandle.getFile();
+                const text = await file.text();
+                const objects = parseACF(text);
+                
+                if (objects.length === 0) {
+                    alert("No attached objects found in " + file.name);
+                    return;
+                }
+
+                resetViewer();
+
+                loadingContainer.classList.add('active');
+                viewport.classList.add('loading');
+                document.getElementById('upload-overlay').classList.add('hidden');
+                document.getElementById('sidebar').classList.remove('hidden-ui');
+                document.getElementById('ui-right-container').classList.remove('hidden-ui');
+                document.getElementById('viewport-toolbar').classList.remove('hidden-ui');
+                document.getElementById('stats-overlay').classList.remove('hidden-ui');
+
+                let loadedCount = 0;
+                const total = objects.length;
+
+                for (const objDef of objects) {
+                    loadingText.textContent = `Loading ${objDef.file} (${loadedCount}/${total})`;
+                    loadingFill.style.width = ((loadedCount / total) * 100) + '%';
+
+                    try {
+                        let objFileHandle = await findObjectFile(dirHandle, objDef.file);
+
+                        if (objFileHandle) {
+                            const objFile = await objFileHandle.getFile();
+                            fileHandleMap.set(objFile.name, { handle: objFileHandle, lastModified: objFile.lastModified, size: objFile.size });
+                            
+                            const objText = await objFile.text();
+                            
+                            // Use index prefix to allow duplicates, but strip path for display
+                            const uniqueName = `${objDef.index}_${objDef.file.split(/[/\\]/).pop()}`;
+                            
+                            parseOBJ8(objText, uniqueName);
+                            
+                            const rec = loadedObjects[loadedObjects.length - 1];
+                            if (rec) {
+                                // Position (ACF Coords -> Three.js)
+                                // X-Plane: X=Right, Y=Up, Z=Aft
+                                // Three.js: X=Right, Y=Up, Z=Back (towards viewer)
+                                // Coordinate systems align for visualization if we treat +Z as Aft.
+                                rec.group.position.set(objDef.pos.x, objDef.pos.y, objDef.pos.z);
+                                
+                                // Rotation (Euler YXZ: Yaw, Pitch, Roll)
+                                const d2r = Math.PI / 180;
+                                const rot = new THREE.Euler(
+                                    objDef.rot.theta * d2r,
+                                    objDef.rot.psi * d2r,
+                                    objDef.rot.phi * d2r,
+                                    'YXZ'
+                                );
+                                rec.group.rotation.copy(rot);
+                            }
+                        } else {
+                            console.warn("Could not find object file:", objDef.file);
+                        }
+
+                    } catch (e) {
+                        console.error("Error loading object:", objDef.file, e);
+                    }
+                    loadedCount++;
+                    updateStats();
+                }
+
+                centerCamera();
+                refreshMaterials();
+                
+                setTimeout(() => {
+                    loadingContainer.classList.remove('active');
+                    viewport.classList.remove('loading');
+                }, 500);
+
+            } catch (err) {
+                console.error("Error loading ACF:", err);
+                alert("Error loading ACF file. See console.");
+                loadingContainer.classList.remove('active');
+                viewport.classList.remove('loading');
+            }
+        }
+
+        async function findObjectFile(dirHandle, filePath) {
+            // Helper to try to get a handle with path normalization
+            const tryPath = async (pathStr) => {
+                // Normalize slashes and split
+                const parts = pathStr.replace(/\\/g, '/').split('/').filter(p => p !== '' && p !== '.');
+                
+                // Filter out '..' to treat them as "root" or skip (clamping to root)
+                const effectiveParts = [];
+                for(let p of parts) {
+                    if(p === '..') continue; 
+                    effectiveParts.push(p);
+                }
+                
+                if (effectiveParts.length === 0) return null;
+
+                let curr = dirHandle;
+                // Traverse folders
+                for (let i = 0; i < effectiveParts.length - 1; i++) {
+                    try {
+                        curr = await curr.getDirectoryHandle(effectiveParts[i]);
+                    } catch (e) {
+                        return null;
+                    }
+                }
+                
+                // Get File
+                try {
+                    return await curr.getFileHandle(effectiveParts[effectiveParts.length - 1]);
+                } catch (e) {
+                    return null;
+                }
+            };
+
+            // 1. Try exact path (normalized)
+            let handle = await tryPath(filePath);
+            if (handle) return handle;
+
+            // 2. Try adding 'objects/' prefix (if not already present)
+            // Note: filePath might be something like "instruments/foo.obj". 
+            // We want to try "objects/instruments/foo.obj".
+            const lower = filePath.toLowerCase().replace(/\\/g, '/');
+            if (!lower.startsWith('objects/')) {
+                 handle = await tryPath('objects/' + filePath);
+                 if (handle) return handle;
+            }
+            
+            return null;
+        }
+
+        function parseACF(text) {
+            const lines = text.split(/\r?\n/);
+            const objects = new Map(); // Index -> { file, pos: {}, rot: {} }
+            
+            lines.forEach(line => {
+                line = line.trim();
+                if (!line.startsWith('P _obja/')) return;
+                
+                const parts = line.split(/\s+/);
+                if (parts.length < 2) return;
+                
+                const keyPath = parts[1];
+                const value = parts.slice(2).join(' '); 
+                
+                const keyParts = keyPath.split('/');
+                if (keyParts.length < 3) return;
+                
+                const index = parseInt(keyParts[1]);
+                if (isNaN(index)) return;
+                
+                const prop = keyParts[2];
+                
+                if (!objects.has(index)) {
+                    objects.set(index, { 
+                        index: index,
+                        file: null, 
+                        pos: { x: 0, y: 0, z: 0 }, 
+                        rot: { phi: 0, theta: 0, psi: 0 } 
+                    });
+                }
+                
+                const obj = objects.get(index);
+                
+                if (prop === '_v10_att_file_stl') {
+                    obj.file = value;
+                } else if (prop === '_v10_att_x_acf_prt_ref') {
+                    obj.pos.x = parseFloat(value);
+                } else if (prop === '_v10_att_y_acf_prt_ref') {
+                    obj.pos.y = parseFloat(value);
+                } else if (prop === '_v10_att_z_acf_prt_ref') {
+                    obj.pos.z = parseFloat(value);
+                } else if (prop === '_v10_att_phi_ref') {
+                    obj.rot.phi = parseFloat(value);
+                } else if (prop === '_v10_att_the_ref') {
+                    obj.rot.theta = parseFloat(value);
+                } else if (prop === '_v10_att_psi_ref') {
+                    obj.rot.psi = parseFloat(value);
+                }
+            });
+            
+            return Array.from(objects.values()).filter(o => o.file && o.file !== 'none' && o.file !== '-1');
         }
 
         // --- PARSER ---
