@@ -1202,6 +1202,13 @@
                     </select>
                 </div>
 
+                <div class="toolbar-group" id="livery-selector-group" style="display: none;">
+                    <select id="livery-select" class="toolbar-select" title="Select Livery">
+                        <option value="">Default Livery</option>
+                    </select>
+                </div>
+                <div class="toolbar-separator" id="livery-separator" style="display: none;"></div>
+
                 <div class="toolbar-separator"></div>
 
                 <button id="recenter-btn" class="icon-btn-tool" title="Recenter Camera"><span
@@ -1555,6 +1562,10 @@
         let acfCgOffset = new THREE.Vector3(0, 0, 0); // Default CG Offset
         let vrHotspotsGroup = null; // Global reference for VR group
         let uiFolders = new Map(); // path -> div element
+        let liveryTextures = new Map(); // Overlay textures for current livery
+        let availableLiveries = []; // List of livery handles/names
+        let currentLivery = null;
+        let acfDirHandle = null; // Store for livery scanning
 
         // Stats
         let filesLoadedCount = 0;
@@ -1779,6 +1790,10 @@
                 refreshMaterials();
                 updateDisabledVisibility();
                 updateVRHotspotsVisibility();
+            });
+
+            document.getElementById('livery-select').addEventListener('change', (e) => {
+                applyLivery(e.target.value);
             });
 
             document.getElementById('stats-overlay').classList.remove('hidden-ui'); // Show stats
@@ -2592,6 +2607,15 @@
 
             materialCache.clear();
             loadedTextures.clear();
+            liveryTextures.clear();
+            availableLiveries = [];
+            currentLivery = null;
+            const liverySelect = document.getElementById('livery-select');
+            if (liverySelect) {
+                liverySelect.innerHTML = '<option value="">Default Livery</option>';
+                document.getElementById('livery-selector-group').style.display = 'none';
+                document.getElementById('livery-separator').style.display = 'none';
+            }
 
             filesLoadedCount = 0;
 
@@ -2658,7 +2682,7 @@
         }
         function handleFile(e) { if (e.target.files.length) processFiles(e.target.files); }
 
-        function loadTextureFile(file) {
+        function loadTextureFile(file, forceKey = null) {
             return new Promise((resolve) => {
                 const texLoader = new THREE.TextureLoader();
                 const ddsLoader = new DDSLoader();
@@ -2684,7 +2708,17 @@
                         tex.offset.y = 1;
                     }
 
-                    loadedTextures.set(file.name.toLowerCase(), tex);
+                    // Live reload detection: if this file belongs to the currently active livery
+                    const lookupKey = forceKey || file.name.toLowerCase();
+                    const info = fileHandleMap.get(lookupKey);
+
+                    if (info && info.isLiveryFile && info.liveryName === currentLivery) {
+                        if (info.relPath) liveryTextures.set(info.relPath, tex);
+                        liveryTextures.set(file.name.toLowerCase(), tex);
+                    } else {
+                        loadedTextures.set(file.name.toLowerCase(), tex);
+                    }
+
                     URL.revokeObjectURL(url);
                     resolve(tex);
                 }, undefined, (err) => {
@@ -2718,9 +2752,10 @@
             }
 
             // Count total files to load
-            const hdrFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.hdr'));
-            const imgFiles = fileList.filter(f => /\.(png|jpg|jpeg|bmp|dds)$/i.test(f.name));
-            const objFiles = fileList.filter(f => f.name.toLowerCase().endsWith('.obj'));
+            const getFileName = (f) => (f.file ? f.file.name : f.name).toLowerCase();
+            const hdrFiles = Array.from(fileList).filter(f => getFileName(f).endsWith('.hdr'));
+            const imgFiles = Array.from(fileList).filter(f => /\.(png|jpg|jpeg|bmp|dds)$/i.test(getFileName(f)));
+            const objFiles = Array.from(fileList).filter(f => getFileName(f).endsWith('.obj'));
             const totalFiles = hdrFiles.length + imgFiles.length + objFiles.length;
             let loadedFiles = 0;
 
@@ -2735,7 +2770,8 @@
 
             // 0. Process HDRs
             for (const f of hdrFiles) {
-                const url = URL.createObjectURL(f);
+                const fileObj = f.file || f;
+                const url = URL.createObjectURL(fileObj);
                 await loadHDRI(url);
                 URL.revokeObjectURL(url);
                 loadedFiles++;
@@ -2744,7 +2780,10 @@
 
             // 1. Identify and load images first
             const texPromises = imgFiles.map(async f => {
-                await loadTextureFile(f);
+                // If this is a reload, f might be a task object { file, key }
+                const fileObj = f.file || f;
+                const forceKey = f.key || null;
+                await loadTextureFile(fileObj, forceKey);
                 loadedFiles++;
                 updateProgress();
             });
@@ -2752,14 +2791,16 @@
             await Promise.all(texPromises);
 
             // 2. Process OBJs
-            for (const file of objFiles) {
-                const text = await file.text();
+            for (const f of objFiles) {
+                const fileObj = f.file || f;
+                const text = await fileObj.text();
 
                 // Check if this file has a stored scene name (from ACF loading)
-                const fileInfo = fileHandleMap.get(file.name);
-                const sceneName = fileInfo?.sceneName || file.name;
+                const fileInfo = fileHandleMap.get(fileObj.name);
+                const sceneName = fileInfo?.sceneName || fileObj.name;
+                const relPath = fileInfo?.relPath || fileObj.name;
 
-                parseOBJ8(text, sceneName);
+                parseOBJ8(text, sceneName, relPath, relPath);
 
                 // Update guiData for new animations immediately so they render correctly during loading
                 animationControllers.forEach(ctrl => {
@@ -2857,6 +2898,20 @@
                 const text = await file.text();
                 const objects = parseACF(text);
 
+                acfDirHandle = dirHandle;
+                currentLivery = null;
+                liveryTextures.clear();
+
+                // Track root directory for live reload (helps find new files)
+                fileHandleMap.set(dirHandle.name, { handle: dirHandle, isDirectory: true });
+
+                const liverySelect = document.getElementById('livery-select');
+                if (liverySelect) {
+                    liverySelect.innerHTML = '<option value="">Default Livery</option>';
+                    document.getElementById('livery-selector-group').style.display = 'none';
+                    document.getElementById('livery-separator').style.display = 'none';
+                }
+
                 if (objects.length === 0) {
                     alert("No attached objects found in " + file.name);
                     return;
@@ -2905,7 +2960,7 @@
                             // Load referenced textures
                             await loadReferencedTextures(objText, dirHandle, objDef.file);
 
-                            parseOBJ8(objText, uniqueName, relPath);
+                            parseOBJ8(objText, uniqueName, relPath, relPath);
 
                             const rec = loadedObjects[loadedObjects.length - 1];
                             if (rec) {
@@ -2947,6 +3002,8 @@
 
                 await loadVRConfig(dirHandle, file);
 
+                await scanLiveries(dirHandle);
+
                 centerCamera();
                 refreshMaterials();
 
@@ -2960,6 +3017,144 @@
                 alert("Error loading ACF file. See console.");
                 loadingContainer.classList.remove('active');
                 viewport.classList.remove('loading');
+            }
+        }
+
+        async function scanLiveries(dirHandle) {
+            try {
+                const liveriesFolder = await dirHandle.getDirectoryHandle('liveries');
+                if (!liveriesFolder) return;
+
+                const liverySelect = document.getElementById('livery-select');
+                const group = document.getElementById('livery-selector-group');
+                const separator = document.getElementById('livery-separator');
+
+                availableLiveries = [];
+                liverySelect.innerHTML = '<option value="">Default Livery</option>';
+
+                for await (const entry of liveriesFolder.values()) {
+                    if (entry.kind === 'directory') {
+                        availableLiveries.push(entry);
+                        const opt = document.createElement('option');
+                        opt.value = entry.name;
+                        opt.textContent = entry.name;
+                        liverySelect.appendChild(opt);
+                    }
+                }
+
+                if (availableLiveries.length > 0) {
+                    group.style.display = 'flex';
+                    separator.style.display = 'block';
+                }
+            } catch (e) {
+                // liveries folder might not exist
+                console.log("No liveries folder found or error scanning liveries:", e);
+            }
+        }
+
+        async function applyLivery(liveryName) {
+            // Remove previous livery stuff from tracking
+            for (const [key, info] of fileHandleMap.entries()) {
+                if (info.isLiveryFile) fileHandleMap.delete(key);
+            }
+
+            liveryTextures.clear();
+            currentLivery = liveryName;
+
+            if (!liveryName) {
+                refreshMaterials();
+                return;
+            }
+
+            try {
+                const liveriesFolder = await acfDirHandle.getDirectoryHandle('liveries');
+                const liveryFolder = await liveriesFolder.getDirectoryHandle(liveryName);
+                const objectsFolder = await liveryFolder.getDirectoryHandle('objects');
+
+                const promises = [];
+
+                async function scanLiveryObjects(folderHandle, relPath = "") {
+                    // Track directory for live reload (helps find new files)
+                    // Use a unique key for the directory handle
+                    const dirKey = `livery_${liveryName}_dir_${relPath || 'root'}`;
+                    fileHandleMap.set(dirKey, {
+                        handle: folderHandle,
+                        isDirectory: true,
+                        isLiveryFile: true,
+                        liveryName: liveryName,
+                        relPath: relPath // Store path for directory scan reload
+                    });
+
+                    for await (const entry of folderHandle.values()) {
+                        if (entry.kind === 'directory') {
+                            await scanLiveryObjects(entry, relPath + entry.name + "/");
+                        } else if (entry.kind === 'file' && /\.(png|jpg|jpeg|bmp|dds)$/i.test(entry.name)) {
+                            const fileName = entry.name.toLowerCase();
+
+                            // Track livery files for live reload
+                            const initialFile = await entry.getFile();
+                            const entryPath = (relPath + entry.name).toLowerCase().replace(/\\/g, '/');
+                            fileHandleMap.set(entryPath, {
+                                handle: entry,
+                                isLiveryFile: true,
+                                liveryName: liveryName,
+                                lastModified: initialFile.lastModified,
+                                size: initialFile.size,
+                                relPath: entryPath
+                            });
+                            // Also store by filename for directory scan matching in checkLiveReload
+                            if (!fileHandleMap.has(fileName)) fileHandleMap.set(fileName, fileHandleMap.get(entryPath));
+
+                            promises.push((async () => {
+                                const file = await entry.getFile();
+                                const texLoader = new THREE.TextureLoader();
+                                const ddsLoader = new DDSLoader();
+                                const url = URL.createObjectURL(file);
+                                const isDDS = file.name.toLowerCase().endsWith('.dds');
+                                const loader = isDDS ? ddsLoader : texLoader;
+
+                                return new Promise((resolve) => {
+                                    loader.load(url, (tex) => {
+                                        const isNormalMap = fileName.includes('_nrm');
+                                        const isMatMap = fileName.includes('_mat');
+                                        tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+                                        tex.name = fileName;
+                                        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+                                        if (!isDDS) {
+                                            tex.flipY = true;
+                                            tex.wrapS = THREE.RepeatWrapping;
+                                            tex.wrapT = THREE.RepeatWrapping;
+                                        } else {
+                                            tex.wrapS = THREE.RepeatWrapping;
+                                            tex.wrapT = THREE.RepeatWrapping;
+                                            tex.repeat.y = -1;
+                                            tex.offset.y = 1;
+                                        }
+
+                                        const entryPath = (relPath + entry.name).toLowerCase().replace(/\\/g, '/');
+                                        liveryTextures.set(entryPath, tex);
+                                        // Also store by filename for legacy lookup if it's the first time we see this filename
+                                        if (!liveryTextures.has(fileName)) liveryTextures.set(fileName, tex);
+                                        URL.revokeObjectURL(url);
+                                        resolve(tex);
+                                    }, undefined, (err) => {
+                                        URL.revokeObjectURL(url);
+                                        resolve(null);
+                                    });
+                                });
+                            })());
+                        }
+                    }
+                }
+
+                await scanLiveryObjects(objectsFolder);
+                await Promise.all(promises);
+                refreshMaterials();
+
+            } catch (e) {
+                console.error("Error applying livery:", e);
+                refreshMaterials();
             }
         }
 
@@ -3386,7 +3581,8 @@
         }
 
         // --- PARSER ---
-        function parseOBJ8(text, fileName, displayName = null) {
+        function parseOBJ8(text, fileName, displayName = null, relPath = null) {
+            const effectiveRelPath = relPath || displayName || fileName;
 
             // Check if object exists and remove it to overwrite
             const existingIdx = loadedObjects.findIndex(o => o.name === fileName);
@@ -3459,7 +3655,7 @@
             }
 
             // Register for List
-            registerObjectUI(fileName, fileGroup, text, displayName, { currentTexture, litTexture, normalTexture });
+            registerObjectUI(fileName, fileGroup, text, displayName, { currentTexture, litTexture, normalTexture }, effectiveRelPath);
 
             const vertices = [];
             const indices = [];
@@ -3491,7 +3687,7 @@
                         for (let j = 1; j < tokens.length; j++) indices.push(parseInt(tokens[j]));
                     }
                     else if (cmd === 'TRIS') {
-                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS, currentDrawEnabled, currentManip);
+                        createMesh(tokens, vertices, indices, currentGroup, currentTexture, litTexture, normalTexture, useNormalMetalness, currentBlend, currentPolyOS, currentDrawEnabled, currentManip, effectiveRelPath);
                     }
                     else if (cmd === 'ATTR_blend') {
                         currentBlend = true;
@@ -3770,7 +3966,7 @@
         }
 
         // --- MESH GENERATION ---
-        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS, drawEnabled, manipData) {
+        function createMesh(tokens, vertices, indices, currentGroup, texName, litName, normName, useNormalMetalness, isTransparent, polyOS, drawEnabled, manipData, relPath) {
             const offset = parseInt(tokens[1]);
             const count = parseInt(tokens[2]);
             const geo = new THREE.BufferGeometry();
@@ -3806,7 +4002,7 @@
                     geo.computeTangents();
                 }
 
-                const mat = getMaterial(texName, litName, normName, useNormalMetalness, isTransparent, polyOS);
+                const mat = getMaterial(texName, litName, normName, useNormalMetalness, isTransparent, polyOS, relPath);
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh._textureName = texName;
                 mesh._litName = litName;
@@ -3815,6 +4011,7 @@
                 mesh._isTransparent = isTransparent;
                 mesh._polyOS = polyOS;
                 mesh._drawEnabled = drawEnabled;
+                mesh._relPath = relPath; // Store for material refreshes
                 mesh.visible = drawEnabled || (currentViewMode === 'manipulators') || settings.showDisabled;
 
                 // Store Manipulator Data
@@ -3836,7 +4033,7 @@
             }
         }
 
-        function registerObjectUI(name, group, text, displayName = null, textures = {}) {
+        function registerObjectUI(name, group, text, displayName = null, textures = {}, relPath = "") {
             const container = document.getElementById('obj-list-container');
             const display = displayName || name;
 
@@ -3986,7 +4183,7 @@
             solo.textContent = 'S';
             solo.title = 'Solo Object';
 
-            const objRecord = { name, group, text, visible: true, div, eye, solo, datarefs: new Set() };
+            const objRecord = { name, group, text, visible: true, div, eye, solo, datarefs: new Set(), relPath: relPath };
             loadedObjects.push(objRecord);
 
             // Toggle Visibility
@@ -4393,7 +4590,7 @@
             return newTex;
         }
 
-        function getMaterial(textureName, litName, normalName, useNormalMetalness, isTransparent, polyOS = 0) {
+        function getMaterial(textureName, litName, normalName, useNormalMetalness, isTransparent, polyOS = 0, objRelPath = "") {
             const baseName = textureName ? textureName.split(/[/\\]/).pop() : "default";
             const litBase = litName ? litName.split(/[/\\]/).pop() : null;
             const normBase = normalName ? normalName.split(/[/\\]/).pop() : null;
@@ -4428,13 +4625,41 @@
 
                 const findTex = (name) => {
                     if (!name || name === "default") return null;
-                    const low = name.toLowerCase();
-                    const candidates = [
-                        low, low + ".png", low + ".jpg", low + ".jpeg", low + ".bmp", low + ".dds",
-                        low.replace(/\.[^/.]+$/, "") + ".png",
-                        low.replace(/\.[^/.]+$/, "") + ".jpg",
-                        low.replace(/\.[^/.]+$/, "") + ".dds"
-                    ];
+
+                    const lowName = name.toLowerCase().replace(/\\/g, '/');
+                    const lowBase = lowName.split('/').pop();
+                    const noExt = lowBase.replace(/\.[^/.]+$/, "");
+
+                    // Resolve path relative to OBJ (X-Plane style)
+                    const resolveRel = (base, target) => {
+                        if (!base) return target.toLowerCase().replace(/\\/g, '/');
+                        const parts = base.split(/[/\\]/);
+                        parts.pop(); // Remove filename
+                        const targetParts = target.split(/[/\\]/);
+                        for (const p of targetParts) {
+                            if (p === '..') { if (parts.length > 0) parts.pop(); }
+                            else if (p !== '.' && p !== '') parts.push(p);
+                        }
+                        return parts.join('/').toLowerCase();
+                    };
+
+                    let cleanBase = objRelPath || "";
+                    if (cleanBase.toLowerCase().startsWith('objects/')) cleanBase = cleanBase.substring(8);
+
+                    const resolved = resolveRel(cleanBase, lowName);
+                    const resolvedNoExt = resolved.replace(/\.[^/.]+$/, "");
+
+                    const candidates = new Set([
+                        resolved,
+                        resolvedNoExt + ".dds", resolvedNoExt + ".png", resolvedNoExt + ".jpg", resolvedNoExt + ".jpeg",
+                        lowName,
+                        lowBase,
+                        noExt + ".dds", noExt + ".png", noExt + ".jpg", noExt + ".jpeg"
+                    ]);
+
+                    // Check livery overrides first
+                    for (const c of candidates) if (liveryTextures.has(c)) return liveryTextures.get(c);
+                    // Check base textures
                     for (const c of candidates) if (loadedTextures.has(c)) return loadedTextures.get(c);
                     return null;
                 };
@@ -4443,9 +4668,9 @@
                     // 1. Albedo & Lit (Only for non-normals modes)
                     if (['material', 'solid', 'wireframe'].includes(currentViewMode)) {
                         if (currentViewMode === 'material') {
-                            const tex = findTex(baseName);
+                            const tex = findTex(textureName);
                             if (tex) { mat.map = tex; mat.color.set(0xffffff); }
-                            const ltex = findTex(litBase);
+                            const ltex = findTex(litName);
                             if (ltex) { mat.emissiveMap = ltex; mat.emissive.set(0xffffff); mat.emissiveIntensity = settings.lit; }
                         } else {
                             mat.color.set(0x888888);
@@ -4453,8 +4678,8 @@
                     }
 
                     // 2. Normals & PBR
-                    const rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
-                    let ntex = findTex(normBase) || findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
+                    const rootName = (textureName || "default").replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
+                    let ntex = findTex(normalName) || findTex(rootName + "_NRM") || findTex(rootName + "_nrm");
 
                     if (ntex) {
                         mat.normalMap = useNormalMetalness ? getProcessedTexture(ntex, 'normal') : ntex;
@@ -4478,10 +4703,10 @@
                     }
 
                 } else if (currentViewMode === 'albedo') {
-                    const tex = findTex(baseName);
+                    const tex = findTex(textureName);
                     if (tex) mat.map = tex;
                 } else if (currentViewMode === 'lit_only') {
-                    const ltex = findTex(litBase);
+                    const ltex = findTex(litName);
                     if (ltex) mat.map = ltex; else mat.color.set(0x000000);
                 } else if (currentViewMode === 'roughness' || currentViewMode === 'metallic') {
                     const rootName = baseName.replace(/\.[^/.]+$/, "").replace(/_alb$/i, "");
@@ -4543,6 +4768,7 @@
         function refreshMaterials() {
             // Clear cache so we really fetch potentially new textures
             materialCache.clear();
+            processedTextureCache.clear();
 
             // Materials for Manipulator Mode
             const manipMat = new THREE.MeshBasicMaterial({ color: 0x9c27b0, wireframe: false, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
@@ -4556,8 +4782,8 @@
                     if (currentViewMode === 'manipulators') {
                         obj.material = obj.userData.manip ? manipMat : nonManipMat;
                     } else {
-                        const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent, pos = obj._polyOS;
-                        obj.material = getMaterial(t, l, n, m, tr, pos);
+                        const t = obj._textureName, l = obj._litName, n = obj._normalName, m = obj._useNormalMetalness, tr = obj._isTransparent, pos = obj._polyOS, rel = obj._relPath;
+                        obj.material = getMaterial(t, l, n, m, tr, pos, rel);
                     }
                 }
             });
@@ -4567,7 +4793,7 @@
             // Store records because parseOBJ8 will remove them from loadedObjects and re-add them
             const records = [...loadedObjects];
             records.forEach(rec => {
-                parseOBJ8(rec.text, rec.name);
+                parseOBJ8(rec.text, rec.name, rec.displayName, rec.relPath);
             });
         }
 
@@ -4586,16 +4812,20 @@
                                 // Only reload if it's a file we've already tracked or is an OBJ/Texture
                                 const isRelevant = /\.(obj|png|jpg|jpeg|bmp|dds|hdr)$/i.test(file.name) || file.name.toLowerCase().includes('_vrconfig.txt');
                                 if (isRelevant) {
-                                    const tracked = fileHandleMap.get(file.name);
+                                    const fullRelName = (info.relPath || "") + file.name;
+                                    const tracked = fileHandleMap.get(fullRelName.toLowerCase());
                                     if (!tracked || file.lastModified !== tracked.lastModified || file.size !== tracked.size) {
                                         // Preserve sceneName if it exists
-                                        fileHandleMap.set(file.name, {
+                                        fileHandleMap.set(fullRelName.toLowerCase(), {
                                             handle: entry,
                                             lastModified: file.lastModified,
                                             size: file.size,
-                                            sceneName: tracked?.sceneName // Preserve original scene name
+                                            sceneName: tracked?.sceneName,
+                                            isLiveryFile: info.isLiveryFile,
+                                            liveryName: info.liveryName,
+                                            relPath: tracked?.relPath
                                         });
-                                        filesToReload.push(file);
+                                        filesToReload.push({ file, key: fullRelName.toLowerCase() });
                                     }
                                 }
                             }
@@ -4604,11 +4834,10 @@
                         // Individual file handle check
                         const file = await info.handle.getFile();
                         if (file.lastModified !== info.lastModified || file.size !== info.size) {
-                            // Preserve sceneName when updating
+                            // Preserve lastModified when updating to stop the loop
                             info.lastModified = file.lastModified;
                             info.size = file.size;
-                            // sceneName is already in info, no need to update
-                            filesToReload.push(file);
+                            filesToReload.push({ file, key: name });
                         }
                     }
                 } catch (err) {
@@ -4626,12 +4855,13 @@
                 console.log(`Live Reloading ${filesToReload.length} file(s)...`);
 
                 // Separate VR config files from other files
-                const vrConfigFiles = filesToReload.filter(f => f.name.toLowerCase().includes('_vrconfig.txt'));
-                const otherFiles = filesToReload.filter(f => !f.name.toLowerCase().includes('_vrconfig.txt'));
+                const vrConfigFiles = filesToReload.filter(t => t.file.name.toLowerCase().includes('_vrconfig.txt'));
+                const otherFiles = filesToReload.filter(t => !t.file.name.toLowerCase().includes('_vrconfig.txt'));
 
                 // Reload VR config files
-                for (const file of vrConfigFiles) {
+                for (const task of vrConfigFiles) {
                     try {
+                        const file = task.file;
                         const text = await file.text();
                         const result = parseVRConfig(text);
                         if (result.hotspots.length > 0) {
