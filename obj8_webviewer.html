@@ -1069,26 +1069,9 @@
             <div id="sidebar-header" class="glass-panel">
                 <h1>OBJ8
                     <div style="display:flex; gap:6px;">
-                        <div style="position: relative;">
-                            <button id="import-menu-btn" class="btn" style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem;">
-                                Import ▾
-                            </button>
-                            <!-- IMPORT POPUP -->
-                            <div id="import-popup" class="hidden popup-menu" style="left: 0; top: 100%; width: 180px; margin-top: 5px;">
-                                <div class="popup-section">
-                                    <label class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 0; border: none; background: transparent;">
-                                        <span class="material-symbols-outlined" style="font-size: 16px;">description</span>
-                                        <span>Select Files</span>
-                                        <input type="file" id="import-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple style="display:none">
-                                    </label>
-                                    <button id="acf-btn" class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 5px 0 0 0; border: none; background: transparent;">
-                                        <span class="material-symbols-outlined" style="font-size: 16px;">folder_open</span>
-                                        <span>Open ACF Folder</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
+                        <button id="import-btn" class="btn" style="width: auto; padding: 4px 8px; margin:0; font-size: 0.7rem;">
+                            Import
+                        </button>
                         <button class="btn btn-danger" id="clear-btn" name="clear-btn"
                             style="padding: 4px 8px; margin:0; font-size: 0.7rem; width: auto;">Clear</button>
                         <label class="chk-label" style="margin: 0; font-size: 0.7rem; display: flex; align-items: center; color: var(--text-muted); cursor: pointer; margin-left: 8px;" title="Automatically reload files when they change on disk">
@@ -1379,31 +1362,41 @@
         </div>
     </div>
 
-    <!-- UPLOAD SCREEN -->
-    <div id="upload-overlay">
-        <div class="drop-box" id="drop-target">
-            <h2 style="color:#fff; margin-top:0;">X-Plane OBJ8 Viewer</h2>
-            <p>Drag & Drop one or multiple .OBJ files</p>
-            <div style="position: relative; display: inline-block; margin-top: 15px;">
-                <button id="upload-import-btn" class="btn" style="width: auto; padding: 8px 20px;">
-                    Import ▾
-                </button>
-                <div id="upload-import-menu" class="hidden popup-menu" style="left: 50%; top: 100%; width: 180px; margin-top: 5px; margin-left: -90px; text-align: left;">
-                    <div class="popup-section">
-                        <label class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 0; border: none; background: transparent;">
-                            <span class="material-symbols-outlined" style="font-size: 16px;">description</span>
-                            <span>Select Files</span>
-                            <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple style="display:none">
-                        </label>
-                        <button id="upload-acf-btn" class="btn" style="text-align: left; display: flex; align-items: center; gap: 8px; margin: 5px 0 0 0; border: none; background: transparent;">
-                            <span class="material-symbols-outlined" style="font-size: 16px;">folder_open</span>
-                            <span>Open ACF Folder</span>
-                        </button>
-                    </div>
+        <!-- UPLOAD SCREEN -->
+
+        <div id="upload-overlay">
+
+            <div class="drop-box" id="drop-target">
+
+                <h2 style="color:#fff; margin-top:0;">X-Plane OBJ8 Viewer</h2>
+
+                <p>Drag & Drop one or multiple .OBJ files</p>
+
+                
+
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+
+                    <label class="btn" style="width: auto; padding: 8px 20px; cursor: pointer; margin: 0;">
+
+                        <span>Browse Files</span>
+
+                        <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple style="display:none">
+
+                    </label>
+
+                    <button id="upload-acf-btn" class="btn" style="width: auto; padding: 8px 20px; margin: 0;">
+
+                        Open ACF Folder
+
+                    </button>
+
                 </div>
+
+                <button id="upload-cancel-btn" class="btn btn-danger hidden-ui" style="margin-top: 20px; width: auto; padding: 4px 12px;">Cancel</button>
+
             </div>
+
         </div>
-    </div>
 
     <!-- LOADING BAR -->
     <div id="loading-bar-container">
@@ -1619,80 +1612,36 @@
             window.addEventListener('dragleave', e => { drop.style.borderColor = '#555'; });
             window.addEventListener('drop', handleDrop);
             
-            const fileInput = document.getElementById('file-input');
-            const importInput = document.getElementById('import-input');
-            
-            // Sidebar Import is handled in its specific block below
-            // Upload Screen Import Input
-            fileInput.addEventListener('change', (e) => {
-                handleFile(e);
-                const menu = document.getElementById('upload-import-menu');
-                if(menu) menu.classList.add('hidden');
-                const btn = document.getElementById('upload-import-btn');
-                if(btn) btn.classList.remove('active');
+            // Sidebar Import Button (Show Overlay)
+            const sidebarImportBtn = document.getElementById('import-btn');
+            sidebarImportBtn.addEventListener('click', () => {
+                const overlay = document.getElementById('upload-overlay');
+                overlay.classList.remove('hidden');
+                
+                // Show cancel button only if we already have files loaded
+                const cancelBtn = document.getElementById('upload-cancel-btn');
+                if (filesLoadedCount > 0) {
+                    cancelBtn.classList.remove('hidden-ui');
+                } else {
+                    cancelBtn.classList.add('hidden-ui');
+                }
             });
 
-            // Upload Screen Import Menu Logic
-            const upImportBtn = document.getElementById('upload-import-btn');
-            const upImportMenu = document.getElementById('upload-import-menu');
-            
-            if (upImportBtn && upImportMenu) {
-                upImportBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    upImportMenu.classList.toggle('hidden');
-                    upImportBtn.classList.toggle('active', !upImportMenu.classList.contains('hidden'));
-                });
+            // Upload Overlay Buttons
+            document.getElementById('file-input').addEventListener('change', (e) => {
+                handleFile(e);
+                document.getElementById('upload-overlay').classList.add('hidden');
+            });
 
-                document.getElementById('upload-acf-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    upImportMenu.classList.add('hidden');
-                    upImportBtn.classList.remove('active');
-                    openACFFolder();
-                });
+            document.getElementById('upload-acf-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openACFFolder();
+                // Overlay hiding is handled inside loadACF/processFiles success
+            });
 
-                window.addEventListener('click', (e) => {
-                    if (!upImportMenu.contains(e.target) && e.target !== upImportBtn && !upImportBtn.contains(e.target)) {
-                        upImportMenu.classList.add('hidden');
-                        upImportBtn.classList.remove('active');
-                    }
-                });
-            }
-
-            // Enhance with FileSystem API if available
-            if (window.showOpenFilePicker) {
-                const setupPicker = (el) => {
-                    const label = el.parentElement;
-                    label.addEventListener('click', async (e) => {
-                        e.preventDefault();
-                        try {
-                            const pickerOptions = {
-                                id: 'obj8_viewer_import',
-                                multiple: true,
-                                types: [{
-                                    description: 'OBJ and Textures',
-                                    accept: { 
-                                        'text/plain': ['.obj'], 
-                                        'image/*': ['.png', '.jpg', '.jpeg', '.bmp', '.hdr', '.dds'] 
-                                    }
-                                }]
-                            };
-                            if (lastUsedHandle) pickerOptions.startIn = lastUsedHandle;
-
-                            const handles = await window.showOpenFilePicker(pickerOptions);
-                            const files = [];
-                            for (const handle of handles) {
-                                const file = await handle.getFile();
-                                fileHandleMap.set(file.name, { handle, lastModified: file.lastModified, size: file.size });
-                                files.push(file);
-                            }
-                            if (handles.length > 0) lastUsedHandle = handles[0];
-                            if (files.length) processFiles(files);
-                        } catch (err) { /* Cancelled */ }
-                    });
-                };
-                setupPicker(fileInput);
-                setupPicker(importInput);
-            }
+            document.getElementById('upload-cancel-btn').addEventListener('click', () => {
+                document.getElementById('upload-overlay').classList.add('hidden');
+            });
 
             // Live Reload Interval
             setInterval(checkLiveReload, 1000);
@@ -1703,42 +1652,6 @@
             document.getElementById('isolate-sel-btn').addEventListener('click', (e) => { e.stopPropagation(); isolateSelectedMesh(); });
             document.getElementById('unhide-all-btn').addEventListener('click', (e) => { e.stopPropagation(); unhideAllMeshes(); });
             document.getElementById('clear-btn').addEventListener('click', resetViewer);
-            document.getElementById('import-input').addEventListener('change', (e) => {
-                handleFile(e);
-                document.getElementById('import-popup').classList.add('hidden');
-                document.getElementById('import-menu-btn').classList.remove('active');
-            });
-
-            document.getElementById('acf-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                document.getElementById('import-popup').classList.add('hidden');
-                document.getElementById('import-menu-btn').classList.remove('active');
-                openACFFolder();
-            });
-
-            // Import Menu Toggle
-            const importBtn = document.getElementById('import-menu-btn');
-            const importPop = document.getElementById('import-popup');
-            
-            importBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                // Close other popups
-                document.getElementById('settings-popup').classList.add('hidden');
-                document.getElementById('settings-btn').classList.remove('active');
-                document.getElementById('screenshot-popup').classList.add('hidden');
-                document.getElementById('screenshot-tool-btn').classList.remove('active');
-
-                importPop.classList.toggle('hidden');
-                importBtn.classList.toggle('active', !importPop.classList.contains('hidden'));
-            });
-
-            // Update global click listener to close import popup too
-            window.addEventListener('click', (e) => {
-                if (!importPop.contains(e.target) && e.target !== importBtn && !importBtn.contains(e.target)) {
-                    importPop.classList.add('hidden');
-                    importBtn.classList.remove('active');
-                }
-            });
             document.getElementById('dref-search').addEventListener('input', filterDataRefs);
             document.getElementById('search-clear').addEventListener('click', () => {
                 if (selectedMeshes.length > 0) {
@@ -2652,7 +2565,11 @@
             }
 
             try {
-                const dirHandle = await window.showDirectoryPicker({ id: 'acf_folder', mode: 'read' });
+                const pickerOptions = { id: 'acf_folder', mode: 'read' };
+                if (lastUsedHandle) pickerOptions.startIn = lastUsedHandle;
+
+                const dirHandle = await window.showDirectoryPicker(pickerOptions);
+                lastUsedHandle = dirHandle;
                 
                 // 1. Find .acf files
                 const acfFiles = [];
@@ -3041,21 +2958,11 @@
             fileGroup.name = fileName;
             rootGroup.add(fileGroup);
 
-            // Register for List
-            registerObjectUI(fileName, fileGroup, text, displayName);
-
-            const vertices = [];
-            const indices = [];
             const lines = text.split(/\r?\n/);
-
             let currentTexture = "default";
             let litTexture = null;
             let normalTexture = null;
             let useNormalMetalness = false;
-            let currentBlend = true;
-            let currentPolyOS = 0;
-            let currentDrawEnabled = true;
-            let currentManip = null;
 
             // Pre-scan texture(s)
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
@@ -3074,6 +2981,17 @@
                 if (cmd === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
                 if (cmd === 'NORMAL_METALNESS') { useNormalMetalness = true; }
             }
+
+            // Register for List
+            registerObjectUI(fileName, fileGroup, text, displayName, { currentTexture, litTexture, normalTexture });
+
+            const vertices = [];
+            const indices = [];
+            
+            let currentBlend = true;
+            let currentPolyOS = 0;
+            let currentDrawEnabled = true;
+            let currentManip = null;
 
             const groupStack = [{ object: fileGroup }];
             const currentGroup = () => groupStack[groupStack.length - 1].object;
@@ -3442,7 +3360,7 @@
             }
         }
 
-        function registerObjectUI(name, group, text, displayName = null) {
+        function registerObjectUI(name, group, text, displayName = null, textures = {}) {
             const container = document.getElementById('obj-list-container');
             const div = document.createElement('div');
             div.className = 'obj-item';
@@ -3450,7 +3368,13 @@
             const nameSpan = document.createElement('span');
             nameSpan.className = 'obj-name';
             const display = displayName || name;
-            nameSpan.title = name;
+            
+            let tooltip = `Object: ${display}`;
+            if (textures.currentTexture && textures.currentTexture !== 'default') tooltip += `\nAlbedo: ${textures.currentTexture}`;
+            if (textures.litTexture) tooltip += `\nLit: ${textures.litTexture}`;
+            if (textures.normalTexture) tooltip += `\nNormal: ${textures.normalTexture}`;
+            
+            nameSpan.title = tooltip;
             nameSpan.textContent = display;
 
             const eye = document.createElement('span');
