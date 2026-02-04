@@ -2742,10 +2742,11 @@
                             // Load referenced textures
                             await loadReferencedTextures(objText, dirHandle, objDef.file);
                             
-                            // Use index prefix to allow duplicates, but strip path for display
-                            const uniqueName = `${objDef.index}_${objDef.file.split(/[/\\]/).pop()}`;
+                            // Use index prefix to ensure uniqueness internally
+                            const cleanName = objDef.file.split(/[/\\]/).pop();
+                            const uniqueName = `${objDef.index}_${cleanName}`;
                             
-                            parseOBJ8(objText, uniqueName);
+                            parseOBJ8(objText, uniqueName, cleanName);
                             
                             const rec = loadedObjects[loadedObjects.length - 1];
                             if (rec) {
@@ -2992,7 +2993,7 @@
         }
 
         // --- PARSER ---
-        function parseOBJ8(text, fileName) {
+        function parseOBJ8(text, fileName, displayName = null) {
 
             // Check if object exists and remove it to overwrite
             const existingIdx = loadedObjects.findIndex(o => o.name === fileName);
@@ -3041,7 +3042,7 @@
             rootGroup.add(fileGroup);
 
             // Register for List
-            registerObjectUI(fileName, fileGroup, text);
+            registerObjectUI(fileName, fileGroup, text, displayName);
 
             const vertices = [];
             const indices = [];
@@ -3441,15 +3442,16 @@
             }
         }
 
-        function registerObjectUI(name, group, text) {
+        function registerObjectUI(name, group, text, displayName = null) {
             const container = document.getElementById('obj-list-container');
             const div = document.createElement('div');
             div.className = 'obj-item';
 
             const nameSpan = document.createElement('span');
             nameSpan.className = 'obj-name';
+            const display = displayName || name;
             nameSpan.title = name;
-            nameSpan.textContent = name;
+            nameSpan.textContent = display;
 
             const eye = document.createElement('span');
             eye.className = 'icon-btn eye-btn material-symbols-outlined';
