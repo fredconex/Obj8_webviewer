@@ -289,6 +289,7 @@
             transition: background 0.1s;
             color: #666;
             /* Darker default text */
+            user-select: none;
         }
 
         .obj-item:hover {
@@ -1477,6 +1478,7 @@
         const moveSpeed = 0.01;
         let fileHandleMap = new Map(); // Filename -> {handle, lastModified}
         let lastUsedHandle = null; // Track last used folder/file for picker
+        let lastClickedObjIndex = -1; // Track multi-selection range in list
 
         // Resources
         let loadedTextures = new Map();
@@ -2159,80 +2161,89 @@
             updateStats();
             updateObjectListSelection();
 
-            // Manipulator Info Panel Update
-            const panel = document.getElementById('selection-panel');
-            // If single selection and has manip data
-            if (selectedMeshes.length === 1 && mesh.userData.manip) {
-                const m = mesh.userData.manip;
-                document.getElementById('sel-manip-type').textContent = m.type || 'Unknown';
-
-                const labelText = document.getElementById('sel-manip-label-text');
-                if (labelText) labelText.textContent = m.isCommand ? 'Command' : 'DataRef';
-
-                const drefContainer = document.getElementById('sel-manip-dref');
-                const rawDref = m.dref || 'N/A';
-
-                // Check for multiple datarefs (split by comma ONLY)
-                const drefs = rawDref.split(',').map(d => d.trim()).filter(d => d.length > 0 && d !== 'N/A');
-
-                drefContainer.innerHTML = ''; // Clear existing text
-
-                drefs.forEach(d => {
-                    const row = document.createElement('div');
-                    row.style.display = 'flex';
-                    row.style.alignItems = 'center';
-                    row.style.justifyContent = 'space-between';
-                    row.style.marginBottom = '4px';
-                    row.style.background = 'rgba(255,255,255,0.05)';
-                    row.style.padding = '2px 4px';
-                    row.style.borderRadius = '4px';
-
-                    const text = document.createElement('span');
-                    text.textContent = d;
-                    text.style.wordBreak = 'break-all';
-                    text.style.marginRight = '6px';
-                    text.style.color = '#4db8ff'; // Accent color
-
-                    const btn = document.createElement('span');
-                    btn.className = 'material-symbols-outlined icon-btn';
-                    btn.textContent = 'content_copy';
-                    btn.style.fontSize = '14px';
-                    btn.title = 'Copy this DataRef';
-                    btn.style.cursor = 'pointer';
-                    btn.style.opacity = '0.7';
-
-                    btn.onmouseover = () => btn.style.opacity = '1';
-                    btn.onmouseout = () => btn.style.opacity = '0.7';
-
-                    btn.onclick = (e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(d);
-                        showToast('Copied: ' + d);
-                    };
-
-                    row.appendChild(text);
-                    row.appendChild(btn);
-                    drefContainer.appendChild(row);
-                });
-
-                // Hide main header copy button as we ALWAYS have individual ones now
-                const mainCopyBtn = document.getElementById('sel-manip-copy-btn');
-                if (mainCopyBtn) mainCopyBtn.style.display = 'none';
-
-                const ttRow = document.getElementById('sel-manip-tooltip-row');
-                if (m.tooltip && m.tooltip.trim().length > 0) {
-                    document.getElementById('sel-manip-tooltip').textContent = m.tooltip;
-                    ttRow.style.display = 'flex';
-                } else {
-                    ttRow.style.display = 'none';
-                }
-
-                panel.classList.add('active');
-            } else {
-                // If appending or no manip data, we might want to hide it or keep showing last?
-                // For now, only show if single valid selection
-                if (!append) panel.classList.remove('active');
+            // Store last clicked index for range selection from 3D viewport
+            let curr = mesh;
+            while (curr && curr.parent !== rootGroup) curr = curr.parent;
+            if (curr) {
+                const idx = loadedObjects.findIndex(rec => rec.group === curr);
+                if (idx !== -1) lastClickedObjIndex = idx;
             }
+
+            // Manipulator Info Panel Update
+            if (selectedMeshes.length === 1 && mesh.userData.manip) {
+                updateManipulatorPanel(mesh);
+            } else {
+                if (!append) document.getElementById('selection-panel').classList.remove('active');
+            }
+        }
+
+        function updateManipulatorPanel(mesh) {
+            const panel = document.getElementById('selection-panel');
+            const m = mesh.userData.manip;
+            document.getElementById('sel-manip-type').textContent = m.type || 'Unknown';
+
+            const labelText = document.getElementById('sel-manip-label-text');
+            if (labelText) labelText.textContent = m.isCommand ? 'Command' : 'DataRef';
+
+            const drefContainer = document.getElementById('sel-manip-dref');
+            const rawDref = m.dref || 'N/A';
+
+            // Check for multiple datarefs (split by comma ONLY)
+            const drefs = rawDref.split(',').map(d => d.trim()).filter(d => d.length > 0 && d !== 'N/A');
+
+            drefContainer.innerHTML = ''; // Clear existing text
+
+            drefs.forEach(d => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.justifyContent = 'space-between';
+                row.style.marginBottom = '4px';
+                row.style.background = 'rgba(255,255,255,0.05)';
+                row.style.padding = '2px 4px';
+                row.style.borderRadius = '4px';
+
+                const text = document.createElement('span');
+                text.textContent = d;
+                text.style.wordBreak = 'break-all';
+                text.style.marginRight = '6px';
+                text.style.color = '#4db8ff'; // Accent color
+
+                const btn = document.createElement('span');
+                btn.className = 'material-symbols-outlined icon-btn';
+                btn.textContent = 'content_copy';
+                btn.style.fontSize = '14px';
+                btn.title = 'Copy this DataRef';
+                btn.style.cursor = 'pointer';
+                btn.style.opacity = '0.7';
+
+                btn.onmouseover = () => btn.style.opacity = '1';
+                btn.onmouseout = () => btn.style.opacity = '0.7';
+
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(d);
+                    showToast('Copied: ' + d);
+                };
+
+                row.appendChild(text);
+                row.appendChild(btn);
+                drefContainer.appendChild(row);
+            });
+
+            // Hide main header copy button as we ALWAYS have individual ones now
+            const mainCopyBtn = document.getElementById('sel-manip-copy-btn');
+            if (mainCopyBtn) mainCopyBtn.style.display = 'none';
+
+            const ttRow = document.getElementById('sel-manip-tooltip-row');
+            if (m.tooltip && m.tooltip.trim().length > 0) {
+                document.getElementById('sel-manip-tooltip').textContent = m.tooltip;
+                ttRow.style.display = 'flex';
+            } else {
+                ttRow.style.display = 'none';
+            }
+
+            panel.classList.add('active');
         }
 
         function addHighlight(mesh) {
@@ -2316,6 +2327,89 @@
                     rec.div.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             });
+        }
+
+        function handleObjectListClick(index, shift, ctrl) {
+            if (index < 0 || index >= loadedObjects.length) return;
+
+            if (shift && lastClickedObjIndex !== -1) {
+                const start = Math.min(index, lastClickedObjIndex);
+                const end = Math.max(index, lastClickedObjIndex);
+
+                if (!ctrl) {
+                    // Standard shift-click replaces selection
+                    selectedMeshes.forEach(m => removeHighlight(m));
+                    selectedMeshes = [];
+                }
+
+                for (let i = start; i <= end; i++) {
+                    selectObjectMeshes(loadedObjects[i], true);
+                }
+            } else if (ctrl) {
+                toggleObjectMeshes(loadedObjects[index]);
+            } else {
+                selectedMeshes.forEach(m => removeHighlight(m));
+                selectedMeshes = [];
+                selectObjectMeshes(loadedObjects[index], true);
+            }
+
+            lastClickedObjIndex = index;
+            updateObjectListSelection();
+            updateDataRefVisibility();
+            updateStats();
+
+            // Handle manipulator panel
+            const panel = document.getElementById('selection-panel');
+            if (selectedMeshes.length === 1 && selectedMeshes[0].userData.manip) {
+                updateManipulatorPanel(selectedMeshes[0]);
+            } else {
+                panel.classList.remove('active');
+            }
+        }
+
+        function selectObjectMeshes(rec, append = false) {
+            if (!append) {
+                selectedMeshes.forEach(m => removeHighlight(m));
+                selectedMeshes = [];
+            }
+
+            rec.group.traverse(o => {
+                if (o.isMesh && !o._isSelectionHelper && !o.userData?.isSystem) {
+                    if (!selectedMeshes.includes(o)) {
+                        selectedMeshes.push(o);
+                        addHighlight(o);
+                    }
+                }
+            });
+        }
+
+        function toggleObjectMeshes(rec) {
+            const meshes = [];
+            rec.group.traverse(o => {
+                if (o.isMesh && !o._isSelectionHelper && !o.userData?.isSystem) {
+                    meshes.push(o);
+                }
+            });
+
+            // If ANY mesh of the object is selected, deselect all. Otherwise select all.
+            const anySelected = meshes.some(m => selectedMeshes.includes(m));
+
+            if (anySelected) {
+                meshes.forEach(m => {
+                    const idx = selectedMeshes.indexOf(m);
+                    if (idx > -1) {
+                        removeHighlight(m);
+                        selectedMeshes.splice(idx, 1);
+                    }
+                });
+            } else {
+                meshes.forEach(m => {
+                    if (!selectedMeshes.includes(m)) {
+                        selectedMeshes.push(m);
+                        addHighlight(m);
+                    }
+                });
+            }
         }
 
         let lastVisibilityMap = null;
@@ -2425,6 +2519,7 @@
             fileHandleMap.clear();
             lastVisibilityMap = null;
             vrHotspotsGroup = null;
+            lastClickedObjIndex = -1;
 
             materialCache.clear();
             loadedTextures.clear();
@@ -3705,13 +3800,37 @@
             // Toggle Visibility
             eye.onclick = (e) => {
                 e.stopPropagation();
-                if (soloObjects.size > 0) return; // Disable toggle when solo is active (simplifies logic)
-                objRecord.visible = !objRecord.visible;
-                group.visible = objRecord.visible;
+                if (soloObjects.size > 0) return; // Disable toggle when solo is active
 
-                eye.textContent = objRecord.visible ? 'visibility' : 'visibility_off';
-                eye.classList.toggle('hidden', !objRecord.visible);
-                div.style.opacity = objRecord.visible ? '1' : '0.5';
+                const newState = !objRecord.visible;
+
+                // Identify if we should apply this to multiple objects
+                const activeGroups = new Set();
+                selectedMeshes.forEach(m => {
+                    let curr = m;
+                    while (curr && curr.parent !== rootGroup) curr = curr.parent;
+                    if (curr) activeGroups.add(curr);
+                });
+
+                const recordsToToggle = [];
+                if (activeGroups.has(objRecord.group)) {
+                    // Clicked item is part of selection, toggle all selected objects
+                    loadedObjects.forEach(rec => {
+                        if (activeGroups.has(rec.group)) recordsToToggle.push(rec);
+                    });
+                } else {
+                    // Clicked item is NOT selected, just toggle it
+                    recordsToToggle.push(objRecord);
+                }
+
+                recordsToToggle.forEach(rec => {
+                    rec.visible = newState;
+                    rec.group.visible = newState;
+                    rec.eye.textContent = newState ? 'visibility' : 'visibility_off';
+                    rec.eye.classList.toggle('hidden', !newState);
+                    rec.div.style.opacity = newState ? '1' : '0.5';
+                });
+
                 updateStats();
                 updateDataRefVisibility();
             };
@@ -3731,6 +3850,12 @@
 
                 updateVisibility(); // This function now handles Applying Visibility based on state
                 updateDataRefVisibility();
+            };
+
+            // Selection
+            div.onclick = (e) => {
+                const index = loadedObjects.indexOf(objRecord);
+                handleObjectListClick(index, e.shiftKey, e.ctrlKey || e.metaKey);
             };
 
             // Hover Highlight
