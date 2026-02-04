@@ -2518,6 +2518,43 @@
         }
         function handleFile(e) { if (e.target.files.length) processFiles(e.target.files); }
 
+        function loadTextureFile(file) {
+            return new Promise((resolve) => {
+                const texLoader = new THREE.TextureLoader();
+                const ddsLoader = new DDSLoader();
+                const url = URL.createObjectURL(file);
+                const isDDS = file.name.toLowerCase().endsWith('.dds');
+                const loader = isDDS ? ddsLoader : texLoader;
+
+                loader.load(url, (tex) => {
+                    const isNormalMap = file.name.toLowerCase().includes('_nrm');
+                    const isMatMap = file.name.toLowerCase().includes('_mat');
+                    tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+                    tex.name = file.name.toLowerCase();
+                    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+                    if (!isDDS) {
+                        tex.flipY = true;
+                        tex.wrapS = THREE.RepeatWrapping;
+                        tex.wrapT = THREE.RepeatWrapping;
+                    } else {
+                        tex.wrapS = THREE.RepeatWrapping;
+                        tex.wrapT = THREE.RepeatWrapping;
+                        tex.repeat.y = -1;
+                        tex.offset.y = 1;
+                    }
+
+                    loadedTextures.set(file.name.toLowerCase(), tex);
+                    URL.revokeObjectURL(url);
+                    resolve(tex);
+                }, undefined, (err) => {
+                    console.warn(`Error loading texture ${file.name}:`, err);
+                    URL.revokeObjectURL(url);
+                    resolve(null);
+                });
+            });
+        }
+
         async function processFiles(files, silent = false) {
             if (filesLoadedCount === 0) {
                 document.getElementById('upload-overlay').classList.add('hidden');
@@ -2566,47 +2603,10 @@
             }
 
             // 1. Identify and load images first
-            const texPromises = imgFiles.map(f => {
-                return new Promise((resolve) => {
-                    const url = URL.createObjectURL(f);
-                    const isDDS = f.name.toLowerCase().endsWith('.dds');
-                    const loader = isDDS ? ddsLoader : texLoader;
-
-                    loader.load(url, (tex) => {
-                        const isNormalMap = f.name.toLowerCase().includes('_nrm');
-                        const isMatMap = f.name.toLowerCase().includes('_mat');
-                        tex.colorSpace = (isNormalMap || isMatMap) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
-                        tex.name = f.name.toLowerCase();
-                        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
-                        if (!isDDS) {
-                            // Standard images need flipping to match OpenGL UVs
-                            tex.flipY = true;
-                            // Enable tiling for standard textures
-                            tex.wrapS = THREE.RepeatWrapping;
-                            tex.wrapT = THREE.RepeatWrapping;
-                        } else {
-                            // DDS textures often come in inverted Y compared to WebGL/Three.js expectations
-                            // and compressed textures generally don't support .flipY
-                            tex.wrapS = THREE.RepeatWrapping;
-                            tex.wrapT = THREE.RepeatWrapping;
-                            tex.repeat.y = -1;
-                            tex.offset.y = 1;
-                        }
-
-                        loadedTextures.set(f.name.toLowerCase(), tex);
-                        URL.revokeObjectURL(url);
-                        loadedFiles++;
-                        updateProgress();
-                        resolve();
-                    }, undefined, (err) => {
-                        console.warn(`Error loading texture ${f.name}:`, err);
-                        URL.revokeObjectURL(url);
-                        loadedFiles++;
-                        updateProgress();
-                        resolve();
-                    });
-                });
+            const texPromises = imgFiles.map(async f => {
+                await loadTextureFile(f);
+                loadedFiles++;
+                updateProgress();
             });
 
             await Promise.all(texPromises);
@@ -2738,6 +2738,9 @@
                             fileHandleMap.set(objFile.name, { handle: objFileHandle, lastModified: objFile.lastModified, size: objFile.size });
                             
                             const objText = await objFile.text();
+
+                            // Load referenced textures
+                            await loadReferencedTextures(objText, dirHandle, objDef.file);
                             
                             // Use index prefix to allow duplicates, but strip path for display
                             const uniqueName = `${objDef.index}_${objDef.file.split(/[/\\]/).pop()}`;
@@ -2836,6 +2839,74 @@
             }
             
             return null;
+        }
+
+        async function loadReferencedTextures(text, dirHandle, objPath) {
+            const lines = text.split(/\r?\n/);
+            const textureNames = new Set();
+            
+            // Scan first 200 lines
+            for(let i=0; i<Math.min(lines.length, 200); i++) {
+                const line = lines[i].split('#')[0].trim();
+                const parts = line.split(/\s+/);
+                if (['TEXTURE', 'TEXTURE_MAP', 'TEXTURE_LIT', 'TEXTURE_NORMAL'].includes(parts[0])) {
+                    if (parts.length > 1) {
+                        textureNames.add(parts[1]);
+                    }
+                }
+            }
+
+            // Determine directory of the OBJ file relative to root
+            const objDir = objPath.replace(/\\/g, '/').includes('/') ? objPath.replace(/\\/g, '/').substring(0, objPath.replace(/\\/g, '/').lastIndexOf('/')) : '';
+
+            const promises = [];
+            for (const texName of textureNames) {
+                // If it looks like a default or placeholder, skip?
+                if (texName === 'none' || texName === 'default') continue;
+                if (loadedTextures.has(texName.toLowerCase())) continue;
+
+                promises.push((async () => {
+                    let handle = null;
+                    const relativePath = objDir ? `${objDir}/${texName}` : texName;
+                    
+                    // 1. Try relative to OBJ
+                    handle = await findObjectFile(dirHandle, relativePath);
+
+                    // 2. Try exact name in root / global lookup
+                    if (!handle) {
+                        handle = await findObjectFile(dirHandle, texName);
+                    }
+                    
+                    // 3. Try fallback extensions
+                    if (!handle) {
+                        const exts = ['.dds', '.png', '.jpg', '.bmp'];
+                        const baseName = texName.includes('.') ? texName.substring(0, texName.lastIndexOf('.')) : texName;
+                        const relBaseName = relativePath.includes('.') ? relativePath.substring(0, relativePath.lastIndexOf('.')) : relativePath;
+
+                        for (const ext of exts) {
+                            // Skip if this is the extension we already tried
+                            if (texName.toLowerCase().endsWith(ext)) continue;
+
+                            handle = await findObjectFile(dirHandle, relBaseName + ext);
+                            if (handle) break;
+                            
+                            handle = await findObjectFile(dirHandle, baseName + ext);
+                            if (handle) break;
+                        }
+                    }
+
+                    if (handle) {
+                        try {
+                            const file = await handle.getFile();
+                            await loadTextureFile(file);
+                        } catch (e) {
+                            console.warn("Failed to load texture file", texName, e);
+                        }
+                    }
+                })());
+            }
+            
+            await Promise.all(promises);
         }
 
         function parseACF(text) {
@@ -2960,7 +3031,7 @@
             for (let i = 0; i < Math.min(lines.length, 100); i++) {
                 const l = lines[i].split('#')[0].trim();
                 const parts = l.split(/\s+/);
-                if (parts[0] === 'TEXTURE') { currentTexture = parts[1]; }
+                if (parts[0] === 'TEXTURE' || parts[0] === 'TEXTURE_MAP') { currentTexture = parts[1]; }
                 if (parts[0] === 'TEXTURE_LIT') { litTexture = parts[1]; }
                 if (parts[0] === 'TEXTURE_NORMAL') { normalTexture = parts[1]; }
                 if (parts[0] === 'NORMAL_METALNESS') { useNormalMetalness = true; }
