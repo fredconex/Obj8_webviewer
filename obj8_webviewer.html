@@ -1765,7 +1765,14 @@
                 }
 
                 try {
-                    const pickerOptions = { id: 'obj_files', mode: 'read', multiple: true };
+                    const pickerOptions = {
+                        id: 'obj_files',
+                        mode: 'read',
+                        multiple: true,
+                        types: [
+                            { description: 'All Files', accept: { '*/*': ['.obj', '.png', '.dds', '.hdr'] } }
+                        ]
+                    };
                     if (lastUsedHandle) pickerOptions.startIn = lastUsedHandle;
 
                     const handles = await window.showOpenFilePicker(pickerOptions);
