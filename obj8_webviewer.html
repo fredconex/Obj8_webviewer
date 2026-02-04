@@ -1490,14 +1490,9 @@
 
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
 
-                <label class="btn" style="width: auto; padding: 8px 20px; cursor: pointer; margin: 0;">
-
+                <button id="browse-files-btn" class="btn" style="width: auto; padding: 8px 20px; cursor: pointer; margin: 0;">
                     <span>Browse Files</span>
-
-                    <input type="file" id="file-input" accept=".obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds" multiple
-                        style="display:none">
-
-                </label>
+                </button>
 
                 <button id="upload-acf-btn" class="btn" style="width: auto; padding: 8px 20px; margin: 0;">
 
@@ -1753,9 +1748,45 @@
             });
 
             // Upload Overlay Buttons
-            document.getElementById('file-input').addEventListener('change', (e) => {
-                handleFile(e);
-                document.getElementById('upload-overlay').classList.add('hidden');
+            document.getElementById('browse-files-btn').addEventListener('click', async () => {
+                if (!window.showOpenFilePicker) {
+                    // Fallback for browsers that don't support showOpenFilePicker
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.obj,.png,.jpg,.jpeg,.bmp,.hdr,.dds';
+                    input.multiple = true;
+                    input.style.display = 'none';
+                    input.onchange = handleFile;
+                    document.body.appendChild(input);
+                    input.click();
+                    input.remove();
+                    return;
+                }
+
+                try {
+                    const pickerOptions = { id: 'obj_files', mode: 'read', multiple: true };
+                    if (lastUsedHandle) pickerOptions.startIn = lastUsedHandle;
+
+                    const handles = await window.showOpenFilePicker(pickerOptions);
+                    lastUsedHandle = handles[0];
+
+                    const files = [];
+                    for (const handle of handles) {
+                        const file = await handle.getFile();
+                        // Store handle for live reload
+                        fileHandleMap.set(file.name.toLowerCase(), {
+                            handle: handle,
+                            lastModified: file.lastModified,
+                            size: file.size
+                        });
+                        files.push(file);
+                    }
+
+                    processFiles(files);
+                    document.getElementById('upload-overlay').classList.add('hidden');
+                } catch (err) {
+                    if (err.name !== 'AbortError') console.error("Error selecting files:", err);
+                }
             });
 
             document.getElementById('upload-acf-btn').addEventListener('click', (e) => {
