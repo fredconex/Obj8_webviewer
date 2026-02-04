@@ -355,7 +355,75 @@
             border-color: #ffaa00;
         }
 
-        /* --- CONTROLS --- */
+        /* --- TREE VIEW --- */
+        .obj-folder {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .folder-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            color: var(--accent);
+            cursor: pointer;
+            user-select: none;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid #222;
+            font-weight: 500;
+        }
+
+        .folder-header .folder-name {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .folder-header:hover {
+            background: var(--item-hover);
+            color: #fff;
+        }
+
+        .folder-header:hover .icon-btn {
+            color: #888;
+        }
+
+        .folder-content {
+            padding-left: 12px;
+            border-left: 1px solid #2a2a2a;
+            margin-left: 8px;
+        }
+
+        .folder-content.collapsed {
+            display: none;
+        }
+
+        .folder-icon {
+            font-size: 14px !important;
+            transition: transform 0.2s;
+            color: var(--text-muted);
+        }
+
+        .collapsed-folder .folder-icon {
+            transform: rotate(-90deg);
+        }
+
+        .obj-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            border-bottom: 1px solid #222;
+            cursor: pointer;
+            transition: background 0.1s;
+            color: #888;
+            user-select: none;
+        }
+
         .btn {
             background: #2a2a2a;
             color: #eee;
@@ -1486,6 +1554,7 @@
         let selectedMeshes = [];
         let acfCgOffset = new THREE.Vector3(0, 0, 0); // Default CG Offset
         let vrHotspotsGroup = null; // Global reference for VR group
+        let uiFolders = new Map(); // path -> div element
 
         // Stats
         let filesLoadedCount = 0;
@@ -2529,6 +2598,7 @@
             document.getElementById('obj-list-container').innerHTML = '';
             document.getElementById('dref-search').value = '';
             deselectMesh();
+            uiFolders.clear();
 
             if (gui) {
                 // Clear all controllers and folders from the GUI
@@ -2810,13 +2880,16 @@
                     loadingFill.style.width = ((loadedCount / total) * 100) + '%';
 
                     try {
-                        let objFileHandle = await findObjectFile(dirHandle, objDef.file);
+                        let searchResult = await findObjectFile(dirHandle, objDef.file);
 
-                        if (objFileHandle) {
+                        if (searchResult) {
+                            const objFileHandle = searchResult.handle;
+                            const actualPath = searchResult.path;
                             const objFile = await objFileHandle.getFile();
 
-                            // Use index prefix to ensure uniqueness internally
-                            const cleanName = objDef.file.split(/[/\\]/).pop();
+                            // Use actualPath for UI display so 'objects/' prefix is shown if used
+                            const relPath = actualPath.replace(/\\/g, '/');
+                            const cleanName = relPath.split('/').pop();
                             const uniqueName = `${objDef.index}_${cleanName}`;
 
                             // Store with unique name for live reload matching
@@ -2832,7 +2905,7 @@
                             // Load referenced textures
                             await loadReferencedTextures(objText, dirHandle, objDef.file);
 
-                            parseOBJ8(objText, uniqueName, cleanName);
+                            parseOBJ8(objText, uniqueName, relPath);
 
                             const rec = loadedObjects[loadedObjects.length - 1];
                             if (rec) {
@@ -2917,23 +2990,22 @@
 
                 // Get File
                 try {
-                    return await curr.getFileHandle(effectiveParts[effectiveParts.length - 1]);
+                    const handle = await curr.getFileHandle(effectiveParts[effectiveParts.length - 1]);
+                    return { handle, path: pathStr };
                 } catch (e) {
                     return null;
                 }
             };
 
             // 1. Try exact path (normalized)
-            let handle = await tryPath(filePath);
-            if (handle) return handle;
+            let result = await tryPath(filePath);
+            if (result) return result;
 
             // 2. Try adding 'objects/' prefix (if not already present)
-            // Note: filePath might be something like "instruments/foo.obj". 
-            // We want to try "objects/instruments/foo.obj".
             const lower = filePath.toLowerCase().replace(/\\/g, '/');
             if (!lower.startsWith('objects/')) {
-                handle = await tryPath('objects/' + filePath);
-                if (handle) return handle;
+                result = await tryPath('objects/' + filePath);
+                if (result) return result;
             }
 
             return null;
@@ -2976,23 +3048,23 @@
                 }
 
                 promises.push((async () => {
-                    let handle = null;
+                    let result = null;
                     const relativePath = objDir ? `${objDir}/${texName}` : texName;
 
                     console.log(`[TextureDebug] Looking for '${texName}'...`);
 
                     // 1. Try relative to OBJ
                     console.log(`[TextureDebug] Trying relative path: '${relativePath}'`);
-                    handle = await findObjectFile(dirHandle, relativePath);
+                    result = await findObjectFile(dirHandle, relativePath);
 
                     // 2. Try exact name in root / global lookup
-                    if (!handle) {
+                    if (!result) {
                         console.log(`[TextureDebug] Trying root/exact path: '${texName}'`);
-                        handle = await findObjectFile(dirHandle, texName);
+                        result = await findObjectFile(dirHandle, texName);
                     }
 
                     // 3. Try fallback extensions
-                    if (!handle) {
+                    if (!result) {
                         const exts = ['.dds', '.png', '.jpg', '.bmp'];
                         const baseName = texName.includes('.') ? texName.substring(0, texName.lastIndexOf('.')) : texName;
                         const relBaseName = relativePath.includes('.') ? relativePath.substring(0, relativePath.lastIndexOf('.')) : relativePath;
@@ -3002,19 +3074,19 @@
                             if (texName.toLowerCase().endsWith(ext)) continue;
 
                             console.log(`[TextureDebug] Trying fallback extension: '${relBaseName + ext}'`);
-                            handle = await findObjectFile(dirHandle, relBaseName + ext);
-                            if (handle) break;
+                            result = await findObjectFile(dirHandle, relBaseName + ext);
+                            if (result) break;
 
                             console.log(`[TextureDebug] Trying fallback extension (root): '${baseName + ext}'`);
-                            handle = await findObjectFile(dirHandle, baseName + ext);
-                            if (handle) break;
+                            result = await findObjectFile(dirHandle, baseName + ext);
+                            if (result) break;
                         }
                     }
 
-                    if (handle) {
+                    if (result && result.handle) {
                         try {
                             console.log(`[TextureDebug] Found '${texName}'! Loading...`);
-                            const file = await handle.getFile();
+                            const file = await result.handle.getFile();
                             await loadTextureFile(file);
                         } catch (e) {
                             console.warn("[TextureDebug] Failed to load texture file", texName, e);
@@ -3031,18 +3103,18 @@
         async function loadVRConfig(dirHandle, acfFile) {
             const baseName = acfFile.name.replace(/\.[^/.]+$/, "");
             const configName = baseName + "_vrconfig.txt";
-            const handle = await findObjectFile(dirHandle, configName);
+            const result = await findObjectFile(dirHandle, configName);
 
-            if (handle) {
+            if (result && result.handle) {
                 try {
-                    const file = await handle.getFile();
+                    const file = await result.handle.getFile();
                     // Register for live reload tracking
-                    fileHandleMap.set(file.name, { handle: handle, lastModified: file.lastModified, size: file.size });
+                    fileHandleMap.set(file.name, { handle: result.handle, lastModified: file.lastModified, size: file.size });
 
                     const text = await file.text();
-                    const result = parseVRConfig(text);
-                    if (result.hotspots.length > 0) {
-                        drawHotspots(result);
+                    const config = parseVRConfig(text);
+                    if (config.hotspots.length > 0) {
+                        drawHotspots(config);
                     }
                 } catch (e) {
                     console.error("Error loading vrconfig:", e);
@@ -3770,20 +3842,143 @@
 
         function registerObjectUI(name, group, text, displayName = null, textures = {}) {
             const container = document.getElementById('obj-list-container');
+            const display = displayName || name;
+
+            // Handle folder hierarchy
+            let targetContainer = container;
+            if (display.includes('/')) {
+                const parts = display.split('/').filter(p => p !== '' && p !== '.');
+                // Remove leading '..' as requested
+                while (parts.length > 0 && parts[0] === '..') {
+                    parts.shift();
+                }
+
+                const fileName = parts.pop();
+                let currentPath = '';
+
+                parts.forEach(part => {
+                    const parentPath = currentPath;
+                    currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+                    if (!uiFolders.has(currentPath)) {
+                        const folderDiv = document.createElement('div');
+                        folderDiv.className = 'obj-folder collapsed-folder';
+
+                        const header = document.createElement('div');
+                        header.className = 'folder-header';
+
+                        const icon = document.createElement('span');
+                        icon.className = 'material-symbols-outlined folder-icon';
+                        icon.textContent = 'chevron_right';
+
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'folder-name';
+                        nameSpan.textContent = part;
+
+                        header.appendChild(icon);
+                        header.appendChild(nameSpan);
+
+                        const content = document.createElement('div');
+                        content.className = 'folder-content collapsed';
+
+                        header.onclick = (e) => {
+                            e.stopPropagation();
+                            folderDiv.classList.toggle('collapsed-folder');
+                            content.classList.toggle('collapsed');
+                            icon.textContent = content.classList.contains('collapsed') ? 'chevron_right' : 'expand_more';
+                        };
+
+                        // Folder Side Controls
+                        const folderEye = document.createElement('span');
+                        folderEye.className = 'icon-btn eye-btn material-symbols-outlined';
+                        folderEye.textContent = 'visibility';
+                        folderEye.style.fontSize = '16px';
+                        folderEye.onclick = (e) => {
+                            e.stopPropagation();
+                            const isHidden = folderDiv.classList.contains('folder-hidden');
+                            folderDiv.classList.toggle('folder-hidden');
+                            const newState = isHidden; // If it WAS hidden, we are now showing
+                            folderEye.textContent = newState ? 'visibility' : 'visibility_off';
+                            folderEye.classList.toggle('hidden', !newState);
+
+                            // Recursive toggle
+                            content.querySelectorAll('.obj-item').forEach(itemDiv => {
+                                const rec = loadedObjects.find(r => r.div === itemDiv);
+                                if (rec) {
+                                    rec.visible = newState;
+                                    rec.group.visible = newState;
+                                    rec.eye.textContent = newState ? 'visibility' : 'visibility_off';
+                                    rec.eye.classList.toggle('hidden', !newState);
+                                    rec.div.style.opacity = newState ? '1' : '0.5';
+                                }
+                            });
+                            updateStats();
+                            updateDataRefVisibility();
+                        };
+
+                        const folderSolo = document.createElement('span');
+                        folderSolo.className = 'icon-btn solo-btn';
+                        folderSolo.textContent = 'S';
+                        folderSolo.style.width = '16px';
+                        folderSolo.style.height = '16px';
+                        folderSolo.style.lineHeight = '14px';
+                        folderSolo.style.fontSize = '10px';
+                        folderSolo.onclick = (e) => {
+                            e.stopPropagation();
+                            const isSolo = folderSolo.classList.contains('active');
+                            folderSolo.classList.toggle('active');
+                            const newState = !isSolo;
+
+                            content.querySelectorAll('.obj-item').forEach(itemDiv => {
+                                const rec = loadedObjects.find(r => r.div === itemDiv);
+                                if (rec) {
+                                    if (newState) {
+                                        soloObjects.add(rec);
+                                        rec.solo.classList.add('active');
+                                    } else {
+                                        soloObjects.delete(rec);
+                                        rec.solo.classList.remove('active');
+                                    }
+                                }
+                            });
+                            updateVisibility();
+                        };
+
+                        header.appendChild(folderEye);
+                        header.appendChild(folderSolo);
+
+                        folderDiv.appendChild(header);
+                        folderDiv.appendChild(content);
+
+                        const parent = parentPath ? uiFolders.get(parentPath).querySelector('.folder-content') : container;
+                        const firstDirectItem = Array.from(parent.children).find(child => child.classList.contains('obj-item'));
+                        if (firstDirectItem) {
+                            parent.insertBefore(folderDiv, firstDirectItem);
+                        } else {
+                            parent.appendChild(folderDiv);
+                        }
+
+                        uiFolders.set(currentPath, folderDiv);
+                    }
+                    targetContainer = uiFolders.get(currentPath).querySelector('.folder-content');
+                });
+                displayName = fileName;
+            }
+
             const div = document.createElement('div');
             div.className = 'obj-item';
 
             const nameSpan = document.createElement('span');
             nameSpan.className = 'obj-name';
-            const display = displayName || name;
+            const displayItem = displayName || name;
 
-            let tooltip = `Object: ${display}`;
+            let tooltip = `Object: ${display}`; // Always use full display path for tooltip
             if (textures.currentTexture && textures.currentTexture !== 'default') tooltip += `\nAlbedo: ${textures.currentTexture}`;
             if (textures.litTexture) tooltip += `\nLit: ${textures.litTexture}`;
             if (textures.normalTexture) tooltip += `\nNormal: ${textures.normalTexture}`;
 
             nameSpan.title = tooltip;
-            nameSpan.textContent = display;
+            nameSpan.textContent = displayItem;
 
             const eye = document.createElement('span');
             eye.className = 'icon-btn eye-btn material-symbols-outlined';
@@ -3853,12 +4048,6 @@
                 updateDataRefVisibility();
             };
 
-            // Selection
-            div.onclick = (e) => {
-                const index = loadedObjects.indexOf(objRecord);
-                handleObjectListClick(index, e.shiftKey, e.ctrlKey || e.metaKey);
-            };
-
             // Hover Highlight
             let boxHelper = null;
             div.onmouseenter = () => {
@@ -3873,9 +4062,16 @@
             };
 
             div.appendChild(nameSpan);
-            div.appendChild(solo);
             div.appendChild(eye);
-            container.appendChild(div);
+            div.appendChild(solo);
+
+            // Add click-to-select logic
+            div.onclick = (e) => {
+                const index = loadedObjects.indexOf(objRecord);
+                handleObjectListClick(index, e.shiftKey, e.ctrlKey || e.metaKey);
+            };
+
+            targetContainer.appendChild(div);
         }
 
         // --- DATAREFS ---
