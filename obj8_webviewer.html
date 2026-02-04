@@ -1203,6 +1203,13 @@
                                     Show Disabled Meshes
                                 </label>
                             </div>
+                            <div class="popup-row">
+                                <label class="chk-label">
+                                    <input type="checkbox" id="vr-hotspots-chk">
+                                    <span class="toggle-switch"></span>
+                                    Show VR Hotspots
+                                </label>
+                            </div>
                         </div>
                         <button id="restore-defaults-btn" class="btn btn-danger"
                             style="margin-top: 10px; width: 100%;">Restore Defaults</button>
@@ -1476,6 +1483,7 @@
         let materialCache = new Map();
         let selectedMeshes = [];
         let acfCgOffset = new THREE.Vector3(0, 0, 0); // Default CG Offset
+        let vrHotspotsGroup = null; // Global reference for VR group
 
         // Stats
         let filesLoadedCount = 0;
@@ -1489,6 +1497,7 @@
             showBackground: false,
             showGrid: true,
             showDisabled: false,
+            showVRHotspots: true,
             hdr: 'studio',
             live: false,
             ssBgMode: 'transparent',
@@ -1698,6 +1707,7 @@
                 currentViewMode = e.target.value;
                 refreshMaterials();
                 updateDisabledVisibility();
+                updateVRHotspotsVisibility();
             });
 
             document.getElementById('stats-overlay').classList.remove('hidden-ui'); // Show stats
@@ -1786,6 +1796,13 @@
             document.getElementById('show-disabled-chk').addEventListener('change', e => {
                 settings.showDisabled = e.target.checked;
                 updateDisabledVisibility();
+                saveSettings();
+            });
+
+            document.getElementById('vr-hotspots-chk').checked = settings.showVRHotspots;
+            document.getElementById('vr-hotspots-chk').addEventListener('change', e => {
+                settings.showVRHotspots = e.target.checked;
+                updateVRHotspotsVisibility();
                 saveSettings();
             });
 
@@ -1942,6 +1959,7 @@
                     setVal('env-hdr-select', settings.hdr);
                     document.getElementById('env-bg-chk').checked = settings.showBackground;
                     document.getElementById('show-disabled-chk').checked = settings.showDisabled;
+                    document.getElementById('vr-hotspots-chk').checked = settings.showVRHotspots;
                     ssBgMode.value = settings.ssBgMode;
                     colorIn1.value = settings.ssBgColor1;
                     colorIn2.value = settings.ssBgColor2;
@@ -1956,6 +1974,7 @@
                     updateMaterialProperties();
                     updateBackground();
                     updateDisabledVisibility();
+                    updateVRHotspotsVisibility();
                     applyHDR();
                     updateColorUI();
 
@@ -2365,6 +2384,12 @@
             });
         }
 
+        function updateVRHotspotsVisibility() {
+            if (vrHotspotsGroup) {
+                vrHotspotsGroup.visible = (currentViewMode === 'manipulators' && settings.showVRHotspots);
+            }
+        }
+
         function unhideAllMeshes() {
             // User requested to ONLY unhide meshes (the ones hidden with H), 
             // NOT objects (the ones hidden with the Eye icon or excluded by Solo).
@@ -2397,6 +2422,7 @@
             soloObjects.clear();
             fileHandleMap.clear();
             lastVisibilityMap = null;
+            vrHotspotsGroup = null;
 
             materialCache.clear();
             loadedTextures.clear();
@@ -2561,7 +2587,12 @@
             // 2. Process OBJs
             for (const file of objFiles) {
                 const text = await file.text();
-                parseOBJ8(text, file.name);
+
+                // Check if this file has a stored scene name (from ACF loading)
+                const fileInfo = fileHandleMap.get(file.name);
+                const sceneName = fileInfo?.sceneName || file.name;
+
+                parseOBJ8(text, sceneName);
 
                 // Update guiData for new animations immediately so they render correctly during loading
                 animationControllers.forEach(ctrl => {
@@ -2686,16 +2717,23 @@
 
                         if (objFileHandle) {
                             const objFile = await objFileHandle.getFile();
-                            fileHandleMap.set(objFile.name, { handle: objFileHandle, lastModified: objFile.lastModified, size: objFile.size });
+
+                            // Use index prefix to ensure uniqueness internally
+                            const cleanName = objDef.file.split(/[/\\]/).pop();
+                            const uniqueName = `${objDef.index}_${cleanName}`;
+
+                            // Store with unique name for live reload matching
+                            fileHandleMap.set(objFile.name, {
+                                handle: objFileHandle,
+                                lastModified: objFile.lastModified,
+                                size: objFile.size,
+                                sceneName: uniqueName // Store the name used in the scene
+                            });
 
                             const objText = await objFile.text();
 
                             // Load referenced textures
                             await loadReferencedTextures(objText, dirHandle, objDef.file);
-
-                            // Use index prefix to ensure uniqueness internally
-                            const cleanName = objDef.file.split(/[/\\]/).pop();
-                            const uniqueName = `${objDef.index}_${cleanName}`;
 
                             parseOBJ8(objText, uniqueName, cleanName);
 
@@ -2900,6 +2938,9 @@
             if (handle) {
                 try {
                     const file = await handle.getFile();
+                    // Register for live reload tracking
+                    fileHandleMap.set(file.name, { handle: handle, lastModified: file.lastModified, size: file.size });
+
                     const text = await file.text();
                     const result = parseVRConfig(text);
                     if (result.hotspots.length > 0) {
@@ -2964,9 +3005,15 @@
         }
 
         function drawHotspots({ hotspots, refPoint }) {
-            const group = new THREE.Group();
-            group.name = "VR_Hotspots";
-            rootGroup.add(group);
+            // Clean up old group
+            if (vrHotspotsGroup) {
+                rootGroup.remove(vrHotspotsGroup);
+                vrHotspotsGroup = null;
+            }
+
+            vrHotspotsGroup = new THREE.Group();
+            vrHotspotsGroup.name = "VR_Hotspots_System";
+            rootGroup.add(vrHotspotsGroup);
 
             // Determine Offset: RefPoint > ACF_CG > (0,0,0)
             // If refPoint is present, hotspots are relative to it.
@@ -2976,8 +3023,25 @@
             console.log("Applying VR Offset:", offset);
 
             const d2r = Math.PI / 180;
+            const getVibrantColor = () => {
+                const c = new THREE.Color();
+                c.setHSL(Math.random(), 1.0, 0.5); // Vibrant colors
+                return c;
+            };
 
             hotspots.forEach(h => {
+                // Generate a random color for this entire hotspot group
+                const hpColor = getVibrantColor();
+                const aabbMat = new THREE.MeshBasicMaterial({ color: hpColor, transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide });
+                const edgesMat = new THREE.LineBasicMaterial({ color: hpColor });
+                // Marker needs to be visible, so opaque basic material
+                const markerMat = new THREE.MeshBasicMaterial({ color: hpColor });
+                const arrowColor = hpColor;
+
+                // Helper Group for this hotspot
+                const hGroup = new THREE.Group();
+                vrHotspotsGroup.add(hGroup);
+
                 // AABB
                 if (h.aabb) {
                     const min = h.aabb.min.clone().add(offset);
@@ -2987,30 +3051,45 @@
                     const height = max.y - min.y;
                     const depth = max.z - min.z;
 
+                    // 1. Transparent Box
                     const boxGeo = new THREE.BoxGeometry(width, height, depth);
+                    const box = new THREE.Mesh(boxGeo, aabbMat);
 
                     const cx = (min.x + max.x) / 2;
                     const cy = (min.y + max.y) / 2;
                     const cz = (min.z + max.z) / 2;
 
+                    box.position.set(cx, cy, cz);
+                    box.userData.isVRHotspotAABB = true;
+                    hGroup.add(box);
+
+                    // 2. Wireframe Edges
                     const edges = new THREE.EdgesGeometry(boxGeo);
-                    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
-                    line.position.set(cx, cy, cz);
-                    group.add(line);
+                    const line = new THREE.LineSegments(edges, edgesMat);
+                    line.position.copy(box.position);
+                    hGroup.add(line);
                 }
 
                 // Preset View
                 if (h.pos) {
                     const worldPos = h.pos.clone().add(offset);
 
-                    // Marker
+                    // Marker - Smaller, visible size
+                    const markerMatBright = new THREE.MeshBasicMaterial({
+                        color: hpColor,
+                        depthTest: false,
+                        depthWrite: false
+                    });
                     const marker = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.05, 8, 8),
-                        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                        new THREE.SphereGeometry(0.08, 16, 16),
+                        markerMatBright
                     );
                     marker.position.copy(worldPos);
                     marker.name = h.name;
-                    group.add(marker);
+                    marker.renderOrder = 999; // Render on top
+                    marker.userData.isVRHotspot = true;
+                    marker.userData.isSystem = true;
+                    hGroup.add(marker);
 
                     // Orientation Arrow
                     const rot = new THREE.Euler(
@@ -3023,12 +3102,21 @@
                     const dir = new THREE.Vector3(0, 0, -1);
                     dir.applyEuler(rot);
 
-                    const arrow = new THREE.ArrowHelper(dir, worldPos, 0.5, 0xffff00);
-                    group.add(arrow);
+                    // Longer arrow for clarity
+                    const arrow = new THREE.ArrowHelper(dir, worldPos, 0.6, arrowColor, 0.2, 0.15);
+                    hGroup.add(arrow);
                 }
             });
 
-            registerObjectUI("VR Config", group, "", "VR Hotspots");
+            // Mark EVERYTHING in the VR group as system/hotspot objects so the material system skips them
+            vrHotspotsGroup.traverse(o => {
+                if (!o.userData) o.userData = {};
+                o.userData.isSystem = true;
+                o.userData.isVRHotspot = true;
+            });
+
+            updateVRHotspotsVisibility();
+            // registerObjectUI removed as per request for integration into Manipulators mode
         }
 
         function parseACF(text) {
@@ -4119,6 +4207,9 @@
 
             rootGroup.traverse(obj => {
                 if (obj.isMesh && !obj._isSelectionHelper) {
+                    // Skip VR Hotspot system objects - they manage their own materials
+                    if (obj.userData.isSystem || obj.userData.isVRHotspot) return;
+
                     if (currentViewMode === 'manipulators') {
                         obj.material = obj.userData.manip ? manipMat : nonManipMat;
                     } else {
@@ -4150,11 +4241,17 @@
                             if (entry.kind === 'file') {
                                 const file = await entry.getFile();
                                 // Only reload if it's a file we've already tracked or is an OBJ/Texture
-                                const isRelevant = /\.(obj|png|jpg|jpeg|bmp|dds|hdr)$/i.test(file.name);
+                                const isRelevant = /\.(obj|png|jpg|jpeg|bmp|dds|hdr)$/i.test(file.name) || file.name.toLowerCase().includes('_vrconfig.txt');
                                 if (isRelevant) {
                                     const tracked = fileHandleMap.get(file.name);
                                     if (!tracked || file.lastModified !== tracked.lastModified || file.size !== tracked.size) {
-                                        fileHandleMap.set(file.name, { handle: entry, lastModified: file.lastModified, size: file.size });
+                                        // Preserve sceneName if it exists
+                                        fileHandleMap.set(file.name, {
+                                            handle: entry,
+                                            lastModified: file.lastModified,
+                                            size: file.size,
+                                            sceneName: tracked?.sceneName // Preserve original scene name
+                                        });
                                         filesToReload.push(file);
                                     }
                                 }
@@ -4164,8 +4261,10 @@
                         // Individual file handle check
                         const file = await info.handle.getFile();
                         if (file.lastModified !== info.lastModified || file.size !== info.size) {
+                            // Preserve sceneName when updating
                             info.lastModified = file.lastModified;
                             info.size = file.size;
+                            // sceneName is already in info, no need to update
                             filesToReload.push(file);
                         }
                     }
@@ -4182,7 +4281,30 @@
 
             if (filesToReload.length > 0) {
                 console.log(`Live Reloading ${filesToReload.length} file(s)...`);
-                await processFiles(filesToReload, true);
+
+                // Separate VR config files from other files
+                const vrConfigFiles = filesToReload.filter(f => f.name.toLowerCase().includes('_vrconfig.txt'));
+                const otherFiles = filesToReload.filter(f => !f.name.toLowerCase().includes('_vrconfig.txt'));
+
+                // Reload VR config files
+                for (const file of vrConfigFiles) {
+                    try {
+                        const text = await file.text();
+                        const result = parseVRConfig(text);
+                        if (result.hotspots.length > 0) {
+                            drawHotspots(result);
+                        }
+                        console.log(`Reloaded VR config: ${file.name}`);
+                    } catch (e) {
+                        console.error("Error reloading VR config:", e);
+                    }
+                }
+
+                // Reload other files (OBJ, textures)
+                if (otherFiles.length > 0) {
+                    await processFiles(otherFiles, true);
+                }
+
                 showUpdateNotification(filesToReload);
             }
         }
