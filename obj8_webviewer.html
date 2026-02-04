@@ -1139,10 +1139,11 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.172.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
-                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js",
-                "three/addons/loaders/DDSLoader.js": "https://unpkg.com/three@0.172.0/examples/jsm/loaders/DDSLoader.js"
+                "three": "https://unpkg.com/three@0.182.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.182.0/examples/jsm/",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.2/dist/lil-gui.esm.min.js",
+                "three/addons/loaders/DDSLoader.js": "https://unpkg.com/three@0.182.0/examples/jsm/loaders/DDSLoader.js",
+                "three/addons/loaders/HDRLoader.js": "https://unpkg.com/three@0.182.0/examples/jsm/loaders/HDRLoader.js"
             }
         }
     </script>
@@ -1522,7 +1523,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
         import { DDSLoader } from 'three/addons/loaders/DDSLoader.js';
         import GUI from 'lil-gui';
 
@@ -2165,7 +2166,7 @@
 
         function loadHDRI(url) {
             return new Promise((resolve, reject) => {
-                new RGBELoader()
+                new HDRLoader()
                     .load(url, function (texture) {
                         texture.mapping = THREE.EquirectangularReflectionMapping;
                         const envMap = pmremGenerator.fromEquirectangular(texture).texture;
