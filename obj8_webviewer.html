@@ -3133,21 +3133,17 @@
                 const cmd = part[0];
 
                 if (cmd === 'REF_POINT_ACF') {
-                    // Override default CG offset with this reference point
-                    // Format: RefX RefY RefZ (in meters? Doc says "1.0 -2.0")
-                    // It says "If Y/Z blank...".
-                    // Let's assume X Y Z.
+                    // X-Plane VR Config: REF_POINT_ACF <y_meters> <z_meters> 
+                    // or REF_POINT_ACF <x_meters> <y_meters> <z_meters>
                     if (part.length >= 4) {
                         refPoint = new THREE.Vector3(parseFloat(part[1]), parseFloat(part[2]), parseFloat(part[3]));
                     } else if (part.length >= 3) {
-                        // Some docs imply only X Y Z? Or maybe just X Y?
-                        // The example "1.0 -2.0" looks like 2 coordinates.
-                        // Doc says "Y/Z coordinates blank". Implies X is first?
-                        // "OLD CG was at Y/Z... add REF_POINT_ACF 1.0 -2.0... which is the old CG location".
-                        // Wait, X-Plane coordinates are X, Y, Z.
-                        // Maybe it expects X Y Z.
-                        refPoint = new THREE.Vector3(parseFloat(part[1]), parseFloat(part[2]), 0.0);
+                        // Standard case: Y and Z are provided, X is assumed 0 for symmetry
+                        refPoint = new THREE.Vector3(0.0, parseFloat(part[1]), parseFloat(part[2]));
                     }
+                } else if (cmd === 'VRCONFIG' || cmd === 'A' || cmd === '1100') {
+                    // Skip header tokens
+                    return;
                 } else if (cmd === 'BEGIN_TELEPORT_HOTSPOT') {
                     current = { name: part.slice(2).join(" "), aabb: null, pos: null, rot: { psi: 0, theta: 0, phi: 0 } };
                 } else if (cmd === 'END_TELEPORT_HOTSPOT') {
